@@ -117,6 +117,7 @@ router.get('/:id', async (ctx) => {
   const scope = scopeFor(ctx);
   const company = await scope.first('companies', { id: ctx.params.id });
   if (!company || company.deleted_at) throw new NotFoundError('Company');
+  await assertAssigned(ctx, company);
 
   const users = await scope.raw(
     `SELECT u.id, u.full_name, u.email, uc.relationship
@@ -229,6 +230,7 @@ router.post('/', async (ctx) => {
 router.patch('/:id', async (ctx) => {
   const scope = scopeFor(ctx);
   const company = await scope.getOrFail('companies', ctx.params.id, { resource: 'Company' });
+  await assertAssigned(ctx, company);
 
   const body = await ctx.body();
   const input = validate(body, {
@@ -326,6 +328,23 @@ router.delete('/:id', async (ctx) => {
 
   return ok({ id: company.id, status: 'archived' }, { ctx });
 }, { permission: 'companies.delete' });
+
+/**
+ * A user restricted to certain companies may only reach those.
+ *
+ * Tenant scoping alone is not enough here: a client portal user shares a
+ * tenant with every other client the firm serves, so without this check
+ * companies.view would let them read — and companies.update edit — another
+ * client's GSTIN. 404 rather than 403, so the id itself is not confirmed.
+ */
+async function assertAssigned(ctx, company) {
+  if (ctx.has('companies.view') && !ctx.isClient) return;
+
+  const link = await new Db(ctx.env.DB).one(
+    'SELECT 1 AS ok FROM user_companies WHERE user_id = ? AND company_id = ?',
+    [ctx.userId, company.id]);
+  if (!link) throw new NotFoundError('Company');
+}
 
 function deriveStateCode(input) {
   if (input.stateCode) return input.stateCode;

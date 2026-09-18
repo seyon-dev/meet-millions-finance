@@ -96,25 +96,44 @@ const ADMIN = [
   'backup.view', 'backup.manage',
   'attendance.manage',
   'calls.configure', 'calls.recordings.download',
-  'platform.logs.view',
+  'calendar.view', 'calendar.manage',
+  'esign.view', 'esign.send',
+  // Deliberately NOT platform.logs.view: system_logs is platform-wide and
+  // carries other organisations' request paths, error messages and stack
+  // traces. An organisation's own administrator belongs in its audit trail,
+  // not in the platform's operational log.
 ];
 
+/**
+ * The client portal role.
+ *
+ * Scoped to one client's own records and nothing about the firm that serves
+ * them. Several permissions are deliberately absent, because each of them is
+ * organisation-wide rather than client-scoped:
+ *
+ *   settings.view          — the firm's settings and its security policy
+ *   notifications.manage   — the firm's templates, and every message it has
+ *                            sent to every one of its clients
+ *   messaging.view         — the firm's whole WhatsApp inbox
+ *   subscriptions.manage   — the firm's own plan with the platform
+ *   companies.update       — any company in the firm, not just their own
+ *
+ * A client's own notification feed and preferences are reached through
+ * endpoints scoped to their user id, which need no permission at all.
+ */
 const CLIENT = [
   'portal.access', 'profile.manage',
   'clients.view.own',
-  'companies.view', 'companies.switch', 'companies.update',
+  'companies.view', 'companies.switch',
   'documents.view.own', 'documents.upload', 'documents.replace', 'documents.download',
   'documents.delete', 'documents.comment',
   'queries.view.own', 'queries.reply',
   'reports.view.own', 'reports.signoff', 'reports.export',
   'invoices.view.own', 'payments.view', 'payments.pay',
-  'billing.view', 'subscriptions.manage',
   'support.view.own', 'support.create', 'support.reply',
-  'notifications.view', 'notifications.manage',
-  'messaging.view',
+  'notifications.view',
   'voicenotes.create',
   'calls.view.own',
-  'settings.view',
 ];
 
 const AUDITOR = [

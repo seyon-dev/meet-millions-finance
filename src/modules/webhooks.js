@@ -21,7 +21,7 @@ import { json } from '../http/response.js';
 import { Db } from '../db/client.js';
 import { TenantScope } from '../db/tenancy.js';
 import { ID } from '../utils/id.js';
-import { nowIso } from '../utils/time.js';
+import { nowIso, addHours } from '../utils/time.js';
 import { paymentProvider } from '../integrations/payments.js';
 import { telephonyProvider } from '../integrations/telephony.js';
 import { WhatsAppProvider } from '../integrations/messaging.js';
@@ -369,35 +369,40 @@ async function storeInboundWhatsApp(db, change, message) {
     : null;
 
   let thread = await db.one(
-    `SELECT * FROM chat_threads WHERE tenant_id = ? AND channel = 'whatsapp' AND external_ref = ? LIMIT 1`,
+    "SELECT * FROM chat_threads WHERE tenant_id = ? AND channel = 'whatsapp' AND phone = ? LIMIT 1",
     [integration.tenant_id, from]);
   if (!thread) {
     thread = await scope.insert('chat_threads', {
       id: ID.thread(),
       channel: 'whatsapp',
       client_id: client?.id ?? null,
-      external_ref: from,
-      subject: client ? null : `WhatsApp ${message.from}`,
+      phone: from,
+      display_name: client ? null : `WhatsApp ${message.from}`,
       status: 'open',
+      unread_count: 0,
       last_message_at: nowIso(),
     });
   }
 
+  const body = message.text?.body ?? message.button?.text ?? `[${message.type}]`;
   await scope.insert('chat_messages', {
     id: ID.message(),
     thread_id: thread.id,
     direction: 'inbound',
-    sender_type: 'contact',
-    sender_ref: from,
-    body: message.text?.body ?? message.button?.text ?? `[${message.type}]`,
-    message_type: message.type ?? 'text',
+    type: message.type ?? 'text',
+    body,
     provider_message_id: message.id,
-    status: 'received',
+    status: 'delivered',
   });
   await scope.update('chat_threads', thread.id, {
     last_message_at: nowIso(),
+    last_message_preview: body.slice(0, 160),
     unread_count: (thread.unread_count ?? 0) + 1,
     status: 'open',
+    // Meta only allows a free-form reply within 24 hours of the last inbound
+    // message; after that only an approved template may be sent. Recording the
+    // deadline is what lets the inbox say which of the two is available.
+    window_expires_at: addHours(24),
   });
 
   return { status: 'processed', message: `Message from ${message.from} stored.` };

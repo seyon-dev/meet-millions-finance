@@ -156,6 +156,14 @@ export const PERMISSIONS = [
   p('attendance.view',        'View attendance',              'Field ops', 'See attendance and travel reports.'),
   p('attendance.manage',      'Manage attendance',            'Field ops', 'Correct attendance records.'),
 
+  // ---- Calendar ----
+  p('calendar.view',          'View the calendar',            'Calendar', 'See deadlines, meetings and reminders.'),
+  p('calendar.manage',        'Manage calendar events',       'Calendar', 'Create and edit events, and sync a provider.'),
+
+  // ---- e-Sign ----
+  p('esign.view',             'View signature requests',      'e-Sign', 'See who has signed and who has not.'),
+  p('esign.send',             'Send for signature',           'e-Sign', 'Send a document or report for e-signature.'),
+
   // ---- Analytics ----
   p('analytics.view',         'View analytics',               'Analytics', 'Open analytics dashboards.'),
   p('analytics.build',        'Build custom reports',         'Analytics', 'Use the custom report builder.'),

@@ -1,0 +1,748 @@
+/**
+ * Platform administration — the Super Admin's view across every tenant.
+ *
+ * This is the only module that deliberately works outside tenant scope, so
+ * every route here demands a platform permission and reaches the data through
+ * `platformScope()`, which is explicit about crossing the boundary rather than
+ * quietly forgetting to apply it.
+ *
+ * Suspending an organisation ends its sessions. Impersonation is time-boxed,
+ * reason-bearing and audited on both sides.
+ */
+
+import { createRouter } from '../http/router.js';
+import { ok, created, paginated } from '../http/response.js';
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../http/errors.js';
+import { Db, safeOrder } from '../db/client.js';
+import { platformScope } from '../db/tenancy.js';
+import { validate } from '../utils/validate.js';
+import { ID } from '../utils/id.js';
+import { nowIso, addDays, addMonths, monthKey, periodBounds, recentMonthKeys } from '../utils/time.js';
+import { formatINR } from '../utils/money.js';
+import { audit } from '../services/audit.js';
+import { provisionTenant } from '../services/provisioning.js';
+import { revokeAllUserSessions } from '../auth/session.js';
+import { PLANS, PLAN_COMPARISON } from '../data/plans.js';
+import { ADDONS } from '../data/addons.js';
+
+const router = createRouter();
+
+// ---------------------------------------------------------------------------
+// Organisations
+// ---------------------------------------------------------------------------
+router.get('/tenants', async (ctx) => {
+  const db = new Db(ctx.env.DB);
+  const { page, pageSize } = ctx.pagination();
+  const offset = (page - 1) * pageSize;
+
+  const filters = [];
+  const params = [];
+  if (ctx.q('status')) { filters.push('t.status = ?'); params.push(ctx.q('status')); }
+  if (ctx.q('planKey')) { filters.push('p.key = ?'); params.push(ctx.q('planKey')); }
+  if (ctx.q('franchiseId')) { filters.push('t.franchise_id = ?'); params.push(ctx.q('franchiseId')); }
+  if (ctx.q('q')) {
+    filters.push('(LOWER(t.name) LIKE ? OR LOWER(COALESCE(t.email,\'\')) LIKE ? OR LOWER(COALESCE(t.gstin,\'\')) LIKE ?)');
+    const like = `%${ctx.q('q').toLowerCase()}%`;
+    params.push(like, like, like);
+  }
+  filters.push('t.deleted_at IS NULL');
+  const where = `WHERE ${filters.join(' AND ')}`;
+
+  const sort = safeOrder(ctx.q('sort', 'created_at'), ctx.q('dir', 'desc'),
+    ['created_at', 'name', 'status'], 'created_at');
+
+  const rows = await db.many(
+    `SELECT t.*, p.key AS plan_key, p.name AS plan_name, s.status AS subscription_status,
+            s.current_period_end, f.name AS franchise_name,
+            (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id AND u.deleted_at IS NULL) AS user_count,
+            (SELECT COUNT(*) FROM clients c WHERE c.tenant_id = t.id AND c.deleted_at IS NULL) AS client_count,
+            (SELECT COUNT(*) FROM documents d WHERE d.tenant_id = t.id AND d.deleted_at IS NULL) AS document_count
+       FROM tenants t
+       LEFT JOIN subscriptions s ON s.tenant_id = t.id AND s.status IN ('active','trialing','past_due')
+       LEFT JOIN plans p ON p.id = s.plan_id
+       LEFT JOIN franchises f ON f.id = t.franchise_id
+       ${where} ORDER BY t.${sort} LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]);
+
+  const total = await db.count(
+    `SELECT COUNT(*) AS n FROM tenants t
+       LEFT JOIN subscriptions s ON s.tenant_id = t.id AND s.status IN ('active','trialing','past_due')
+       LEFT JOIN plans p ON p.id = s.plan_id ${where}`, params);
+
+  const counts = await db.one(
+    `SELECT COUNT(*) AS total,
+            SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
+            SUM(CASE WHEN status = 'trial' THEN 1 ELSE 0 END) AS trial,
+            SUM(CASE WHEN status = 'suspended' THEN 1 ELSE 0 END) AS suspended
+       FROM tenants WHERE deleted_at IS NULL`);
+
+  return paginated(rows.map(toTenant), {
+    page, pageSize, total,
+    summary: {
+      total: Number(counts?.total) || 0,
+      active: Number(counts?.active) || 0,
+      trial: Number(counts?.trial) || 0,
+      suspended: Number(counts?.suspended) || 0,
+    },
+  }, ctx);
+}, { permission: 'tenants.view' });
+
+router.get('/tenants/:id', async (ctx) => {
+  const db = new Db(ctx.env.DB);
+  const tenant = await db.one('SELECT * FROM tenants WHERE id = ?', [ctx.params.id]);
+  if (!tenant) throw new NotFoundError('Organisation');
+
+  const subscription = await db.one(
+    `SELECT s.*, p.key AS plan_key, p.name AS plan_name, p.monthly_price_paise
+       FROM subscriptions s JOIN plans p ON p.id = s.plan_id
+      WHERE s.tenant_id = ? ORDER BY s.created_at DESC LIMIT 1`, [ctx.params.id]);
+
+  const addOns = await db.many(
+    `SELECT a.key, a.name, s.status, s.monthly_price_paise, s.activated_at
+       FROM add_on_subscriptions s JOIN add_ons a ON a.id = s.add_on_id
+      WHERE s.tenant_id = ? ORDER BY a.number`, [ctx.params.id]);
+
+  const usage = await db.one(
+    `SELECT
+       (SELECT COUNT(*) FROM users WHERE tenant_id = ? AND deleted_at IS NULL) AS users,
+       (SELECT COUNT(*) FROM companies WHERE tenant_id = ? AND deleted_at IS NULL) AS companies,
+       (SELECT COUNT(*) FROM clients WHERE tenant_id = ? AND deleted_at IS NULL) AS clients,
+       (SELECT COUNT(*) FROM documents WHERE tenant_id = ? AND deleted_at IS NULL) AS documents,
+       (SELECT COALESCE(SUM(v.size_bytes),0) FROM document_versions v WHERE v.tenant_id = ?) AS storage_bytes`,
+    [ctx.params.id, ctx.params.id, ctx.params.id, ctx.params.id, ctx.params.id]);
+
+  const owners = await db.many(
+    `SELECT u.id, u.full_name, u.email, u.last_login_at, r.key AS role_key
+       FROM users u JOIN user_roles ur ON ur.user_id = u.id JOIN roles r ON r.id = ur.role_id
+      WHERE u.tenant_id = ? AND r.key IN ('admin','super_admin') AND u.deleted_at IS NULL
+      ORDER BY u.created_at LIMIT 10`, [ctx.params.id]);
+
+  const invoices = await db.many(
+    `SELECT id, invoice_no, status, total_paise, amount_due_paise, issue_date, due_date
+       FROM invoices WHERE tenant_id = ? AND direction = 'platform_to_tenant'
+      ORDER BY issue_date DESC LIMIT 12`, [ctx.params.id]);
+
+  return ok({
+    tenant: toTenant(tenant),
+    subscription,
+    addOns,
+    usage: {
+      users: Number(usage?.users) || 0,
+      companies: Number(usage?.companies) || 0,
+      clients: Number(usage?.clients) || 0,
+      documents: Number(usage?.documents) || 0,
+      storageBytes: Number(usage?.storage_bytes) || 0,
+    },
+    owners,
+    invoices,
+  }, { ctx });
+}, { permission: 'tenants.view' });
+
+router.post('/tenants', async (ctx) => {
+  const body = await ctx.body();
+  const input = validate(body, {
+    name: { type: 'string', required: true, max: 160 },
+    ownerName: { type: 'string', required: true, max: 120 },
+    ownerEmail: { type: 'email', required: true },
+    ownerPhone: { type: 'phone' },
+    planKey: { type: 'enum', values: PLANS.map(p => p.key), default: 'standard' },
+    franchiseId: { type: 'id' },
+    gstin: { type: 'gstin' },
+    stateCode: { type: 'string', max: 2 },
+    trialDays: { type: 'int', min: 0, max: 90 },
+    isDemo: { type: 'boolean', default: false },
+  });
+
+  const db = new Db(ctx.env.DB);
+  const clash = await db.one(
+    'SELECT id FROM users WHERE email = ? AND deleted_at IS NULL LIMIT 1', [input.ownerEmail]);
+  if (clash) throw new ConflictError('That email address already belongs to an account.');
+
+  // The owner gets a generated password, shown once here and never stored in
+  // clear. Platform staff pass it on; nobody can read it back later.
+  const { hashPassword, generateTemporaryPassword } = await import('../auth/password.js');
+  const temporaryPassword = generateTemporaryPassword();
+
+  const result = await provisionTenant(ctx, {
+    organisationName: input.name,
+    ownerName: input.ownerName,
+    ownerEmail: input.ownerEmail,
+    ownerPhone: input.ownerPhone,
+    passwordHash: await hashPassword(temporaryPassword),
+    companyName: input.name,
+    gstin: input.gstin,
+    stateCode: input.stateCode ?? (input.gstin ? input.gstin.slice(0, 2) : '33'),
+    planKey: input.planKey,
+    franchiseId: input.franchiseId,
+    isDemo: input.isDemo,
+  });
+
+  if (input.trialDays) {
+    await db.update('subscriptions', { id: result.subscription.id }, {
+      status: 'trialing', trial_ends_at: addDays(input.trialDays), updated_at: nowIso(),
+    });
+  }
+
+  await audit(ctx, {
+    action: 'platform.tenant_created', category: 'general', severity: 'notice',
+    tenantId: null,
+    entityType: 'tenant', entityId: result.tenant.id, entityLabel: input.name,
+    newValue: { plan: input.planKey, owner: input.ownerEmail, demo: input.isDemo },
+  });
+
+  return created({
+    tenant: toTenant(result.tenant),
+    owner: { id: result.user.id, email: result.user.email, role: result.roleKey },
+    company: { id: result.company.id, name: result.company.name },
+    temporaryPassword,
+  }, { ctx });
+}, { permission: 'tenants.create' });
+
+router.patch('/tenants/:id', async (ctx) => {
+  const db = new Db(ctx.env.DB);
+  const tenant = await db.one('SELECT * FROM tenants WHERE id = ?', [ctx.params.id]);
+  if (!tenant) throw new NotFoundError('Organisation');
+
+  const body = await ctx.body();
+  const input = validate(body, {
+    name: { type: 'string', max: 160 },
+    status: { type: 'enum', values: ['active', 'trial', 'suspended', 'cancelled'] },
+    email: { type: 'email' },
+    phone: { type: 'phone' },
+    franchiseId: { type: 'id' },
+    reason: { type: 'text', max: 500 },
+  });
+
+  const patch = {};
+  for (const [field, column] of Object.entries({
+    name: 'name', status: 'status', email: 'email', phone: 'phone', franchiseId: 'franchise_id',
+  })) {
+    if (input[field] !== null && input[field] !== undefined) patch[column] = input[field];
+  }
+  if (!Object.keys(patch).length) throw new BadRequestError('Nothing to update.');
+
+  // Suspending an organisation has to end its sessions, or the change is
+  // advisory: everyone stays signed in until their token happens to expire.
+  if (patch.status && patch.status !== 'active' && tenant.status === 'active') {
+    if (!input.reason) {
+      throw new BadRequestError('Give a reason when suspending or cancelling an organisation.');
+    }
+    const users = await db.many(
+      'SELECT id FROM users WHERE tenant_id = ? AND deleted_at IS NULL', [ctx.params.id]);
+    for (const user of users) {
+      await revokeAllUserSessions(db, user.id, { reason: `tenant_${patch.status}` });
+    }
+  }
+
+  await db.update('tenants', { id: ctx.params.id }, { ...patch, updated_at: nowIso() });
+
+  await audit(ctx, {
+    action: patch.status && patch.status !== 'active' ? 'platform.tenant_suspended' : 'platform.tenant_updated',
+    category: 'general',
+    severity: patch.status && patch.status !== 'active' ? 'warning' : 'info',
+    tenantId: null,
+    entityType: 'tenant', entityId: ctx.params.id, entityLabel: tenant.name,
+    oldValue: { status: tenant.status, name: tenant.name },
+    newValue: { ...patch, reason: input.reason ?? null },
+  });
+
+  const fresh = await db.one('SELECT * FROM tenants WHERE id = ?', [ctx.params.id]);
+  return ok({ tenant: toTenant(fresh) }, { ctx });
+}, { anyPermission: ['tenants.update', 'tenants.suspend'], stepUp: true });
+
+/** Move an organisation onto a different plan. */
+router.post('/tenants/:id/plan', async (ctx) => {
+  const db = new Db(ctx.env.DB);
+  const tenant = await db.one('SELECT * FROM tenants WHERE id = ?', [ctx.params.id]);
+  if (!tenant) throw new NotFoundError('Organisation');
+
+  const body = await ctx.body();
+  const input = validate(body, {
+    planKey: { type: 'string', required: true, max: 40 },
+    reason: { type: 'text', max: 500 },
+    trialDays: { type: 'int', min: 0, max: 90 },
+  });
+
+  const plan = await db.one('SELECT * FROM plans WHERE key = ?', [input.planKey]);
+  if (!plan) throw new BadRequestError(`Unknown plan: ${input.planKey}.`);
+
+  const subscription = await db.one(
+    'SELECT * FROM subscriptions WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 1',
+    [ctx.params.id]);
+  if (!subscription) throw new NotFoundError('Subscription');
+
+  const previous = await db.one('SELECT key, name FROM plans WHERE id = ?', [subscription.plan_id]);
+
+  // A downgrade that would put the organisation over its new limits is worth
+  // saying out loud rather than discovering when a user cannot be created.
+  const usage = await db.one(
+    `SELECT
+       (SELECT COUNT(*) FROM users WHERE tenant_id = ? AND deleted_at IS NULL) AS users,
+       (SELECT COUNT(*) FROM companies WHERE tenant_id = ? AND deleted_at IS NULL) AS companies`,
+    [ctx.params.id, ctx.params.id]);
+  const overages = [];
+  if (plan.max_users >= 0 && Number(usage?.users) > plan.max_users) {
+    overages.push(`${usage.users} users against a limit of ${plan.max_users}`);
+  }
+  if (plan.max_companies >= 0 && Number(usage?.companies) > plan.max_companies) {
+    overages.push(`${usage.companies} companies against a limit of ${plan.max_companies}`);
+  }
+
+  await db.update('subscriptions', { id: subscription.id }, {
+    plan_id: plan.id,
+    status: input.trialDays ? 'trialing' : 'active',
+    trial_ends_at: input.trialDays ? addDays(input.trialDays) : null,
+    current_period_start: nowIso(),
+    current_period_end: addMonths(1),
+    max_users: plan.max_users,
+    max_companies: plan.max_companies,
+    storage_gb: plan.storage_gb,
+    max_uploads_month: plan.max_uploads_month,
+    updated_at: nowIso(),
+  });
+
+  await audit(ctx, {
+    action: 'billing.plan_changed', category: 'billing', severity: 'notice',
+    tenantId: ctx.params.id,
+    entityType: 'subscription', entityId: subscription.id, entityLabel: tenant.name,
+    oldValue: { plan: previous?.key },
+    newValue: { plan: plan.key, reason: input.reason ?? null, byPlatform: true },
+  });
+
+  return ok({
+    planKey: plan.key,
+    planName: plan.name,
+    // Reported, not enforced: existing records are never deleted to fit a
+    // smaller plan. The limits bite on the next create.
+    overLimit: overages,
+    note: overages.length
+      ? 'The organisation is over its new limits. Existing records are untouched; new ones will be refused until it is back within them.'
+      : null,
+  }, { ctx });
+}, { permission: 'tenants.update' });
+
+/**
+ * Open a support session as a user of another organisation.
+ *
+ * Time-boxed, reason-bearing, and audited on both sides — in the platform
+ * trail and in the tenant's own, so the organisation can see that somebody
+ * from the platform was in their account and why.
+ */
+router.post('/tenants/:id/impersonate', async (ctx) => {
+  const db = new Db(ctx.env.DB);
+  const tenant = await db.one('SELECT * FROM tenants WHERE id = ?', [ctx.params.id]);
+  if (!tenant) throw new NotFoundError('Organisation');
+
+  const body = await ctx.body();
+  const input = validate(body, {
+    userId: { type: 'id', required: true },
+    reason: { type: 'text', required: true, max: 500, label: 'Reason' },
+    minutes: { type: 'int', min: 5, max: 120, default: 30 },
+  });
+
+  const target = await db.one(
+    'SELECT * FROM users WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL',
+    [input.userId, ctx.params.id]);
+  if (!target) throw new NotFoundError('User');
+
+  const { createSession } = await import('../auth/session.js');
+  const { token, session } = await createSession(ctx.env, db, {
+    userId: target.id,
+    tenantId: tenant.id,
+    ip: ctx.ip,
+    userAgent: `impersonation by ${ctx.user.email}`,
+    ttlHours: input.minutes / 60,
+    // Already satisfied: the platform user cleared their own step-up to get
+    // here, and the target's second factor is not ours to present.
+    twofaSatisfied: true,
+  });
+
+  // Both trails. The platform's, and the organisation's own.
+  await audit(ctx, {
+    action: 'platform.impersonation_started', category: 'security', severity: 'critical',
+    tenantId: null,
+    entityType: 'user', entityId: target.id, entityLabel: target.full_name,
+    newValue: { tenant: tenant.name, reason: input.reason, minutes: input.minutes },
+  });
+  await audit(ctx, {
+    action: 'platform.impersonation_started', category: 'security', severity: 'critical',
+    tenantId: tenant.id,
+    entityType: 'user', entityId: target.id, entityLabel: target.full_name,
+    newValue: { by: ctx.user.email, reason: input.reason, minutes: input.minutes },
+  });
+
+  return created({
+    token,
+    expiresAt: session.expires_at,
+    impersonating: { id: target.id, name: target.full_name, email: target.email },
+    tenant: { id: tenant.id, name: tenant.name },
+    notice: 'This session is recorded in the organisation\'s own audit trail.',
+  }, { ctx });
+}, { permission: 'users.impersonate', stepUp: true });
+
+// ---------------------------------------------------------------------------
+// Franchises
+// ---------------------------------------------------------------------------
+router.get('/franchises', async (ctx) => {
+  const db = new Db(ctx.env.DB);
+  const rows = await db.many(
+    `SELECT f.*,
+            (SELECT COUNT(*) FROM tenants t WHERE t.franchise_id = f.id AND t.deleted_at IS NULL) AS tenant_count
+       FROM franchises f ORDER BY f.name`);
+
+  const revenue = await db.many(
+    `SELECT franchise_id, COALESCE(SUM(share_paise),0) AS share, COALESCE(SUM(gross_paise),0) AS gross
+       FROM franchise_revenue WHERE period_key = ? GROUP BY franchise_id`, [monthKey()]);
+  const byFranchise = new Map(revenue.map(r => [r.franchise_id, r]));
+
+  return ok({
+    franchises: rows.map(f => ({
+      id: f.id,
+      name: f.name,
+      code: f.code,
+      owner: { name: f.owner_name, email: f.owner_email, phone: f.owner_phone },
+      city: f.city,
+      state: f.state,
+      status: f.status,
+      revenueSharePct: f.revenue_share_pct,
+      tenantCount: Number(f.tenant_count) || 0,
+      thisMonth: {
+        grossPaise: Number(byFranchise.get(f.id)?.gross) || 0,
+        sharePaise: Number(byFranchise.get(f.id)?.share) || 0,
+      },
+      onboardedAt: f.onboarded_at,
+    })),
+  }, { ctx });
+}, { permission: 'franchises.view' });
+
+router.post('/franchises', async (ctx) => {
+  const db = new Db(ctx.env.DB);
+  const body = await ctx.body();
+  const input = validate(body, {
+    name: { type: 'string', required: true, max: 160 },
+    code: { type: 'string', required: true, max: 20 },
+    ownerName: { type: 'string', max: 120 },
+    ownerEmail: { type: 'email' },
+    ownerPhone: { type: 'phone' },
+    city: { type: 'string', max: 80 },
+    state: { type: 'string', max: 80 },
+    revenueSharePct: { type: 'number', min: 0, max: 100, default: 20 },
+  });
+
+  const code = input.code.toUpperCase();
+  const clash = await db.one('SELECT id FROM franchises WHERE code = ?', [code]);
+  if (clash) throw new ConflictError(`Franchise code ${code} is already in use.`);
+
+  const ts = nowIso();
+  const id = ID.franchise();
+  await db.insert('franchises', {
+    id, name: input.name, code,
+    owner_name: input.ownerName ?? null,
+    owner_email: input.ownerEmail ?? null,
+    owner_phone: input.ownerPhone ?? null,
+    city: input.city ?? null,
+    state: input.state ?? null,
+    status: 'onboarding',
+    revenue_share_pct: input.revenueSharePct,
+    created_at: ts, updated_at: ts,
+  });
+
+  await audit(ctx, {
+    action: 'platform.franchise_created', category: 'general',
+    tenantId: null, entityType: 'franchise', entityId: id, entityLabel: input.name,
+    newValue: { code, revenueSharePct: input.revenueSharePct },
+  });
+
+  const row = await db.one('SELECT * FROM franchises WHERE id = ?', [id]);
+  return created({ franchise: row }, { ctx });
+}, { permission: 'franchises.manage' });
+
+router.patch('/franchises/:id', async (ctx) => {
+  const db = new Db(ctx.env.DB);
+  const franchise = await db.one('SELECT * FROM franchises WHERE id = ?', [ctx.params.id]);
+  if (!franchise) throw new NotFoundError('Franchise');
+
+  const body = await ctx.body();
+  const input = validate(body, {
+    name: { type: 'string', max: 160 },
+    ownerName: { type: 'string', max: 120 },
+    ownerEmail: { type: 'email' },
+    ownerPhone: { type: 'phone' },
+    city: { type: 'string', max: 80 },
+    state: { type: 'string', max: 80 },
+    status: { type: 'enum', values: ['onboarding', 'active', 'suspended', 'terminated'] },
+    revenueSharePct: { type: 'number', min: 0, max: 100 },
+  });
+
+  const patch = {};
+  for (const [field, column] of Object.entries({
+    name: 'name', ownerName: 'owner_name', ownerEmail: 'owner_email', ownerPhone: 'owner_phone',
+    city: 'city', state: 'state', status: 'status', revenueSharePct: 'revenue_share_pct',
+  })) {
+    if (input[field] !== null && input[field] !== undefined) patch[column] = input[field];
+  }
+  if (!Object.keys(patch).length) throw new BadRequestError('Nothing to update.');
+  if (patch.status === 'active' && !franchise.onboarded_at) patch.onboarded_at = nowIso();
+
+  await db.update('franchises', { id: ctx.params.id }, { ...patch, updated_at: nowIso() });
+  await audit(ctx, {
+    action: 'platform.franchise_updated', category: 'general',
+    tenantId: null, entityType: 'franchise', entityId: ctx.params.id, entityLabel: franchise.name,
+    oldValue: { status: franchise.status, revenue_share_pct: franchise.revenue_share_pct },
+    newValue: patch,
+  });
+
+  const row = await db.one('SELECT * FROM franchises WHERE id = ?', [ctx.params.id]);
+  return ok({ franchise: row }, { ctx });
+}, { permission: 'franchises.manage' });
+
+// ---------------------------------------------------------------------------
+// Plans
+// ---------------------------------------------------------------------------
+router.get('/plans', async (ctx) => {
+  const db = new Db(ctx.env.DB);
+  const rows = await db.many('SELECT * FROM plans ORDER BY sort_order');
+  const features = await db.many('SELECT * FROM plan_features ORDER BY sort_order');
+  const byPlan = new Map();
+  for (const f of features) {
+    if (!byPlan.has(f.plan_id)) byPlan.set(f.plan_id, []);
+    byPlan.get(f.plan_id).push(f);
+  }
+
+  const counts = await db.many(
+    `SELECT plan_id, COUNT(*) AS n FROM subscriptions
+      WHERE status IN ('active','trialing') GROUP BY plan_id`);
+  const subscribers = new Map(counts.map(c => [c.plan_id, Number(c.n)]));
+
+  return ok({
+    plans: rows.map(p => ({
+      ...p,
+      monthlyPriceLabel: formatINR(p.monthly_price_paise),
+      yearlyPriceLabel: p.yearly_price_paise ? formatINR(p.yearly_price_paise) : null,
+      features: byPlan.get(p.id) ?? [],
+      subscribers: subscribers.get(p.id) ?? 0,
+    })),
+    comparison: PLAN_COMPARISON,
+  }, { ctx });
+}, { permission: 'plans.manage' });
+
+router.patch('/plans/:key', async (ctx) => {
+  const db = new Db(ctx.env.DB);
+  const plan = await db.one('SELECT * FROM plans WHERE key = ?', [ctx.params.key]);
+  if (!plan) throw new NotFoundError('Plan');
+
+  const body = await ctx.body();
+  const input = validate(body, {
+    name: { type: 'string', max: 80 },
+    tagline: { type: 'string', max: 200 },
+    monthlyPricePaise: { type: 'paise', min: 0 },
+    yearlyPricePaise: { type: 'paise', min: 0 },
+    maxUsers: { type: 'int', min: -1, max: 100000 },
+    maxCompanies: { type: 'int', min: -1, max: 100000 },
+    storageGb: { type: 'int', min: -1, max: 100000 },
+    maxUploadsMonth: { type: 'int', min: -1, max: 1000000 },
+    isPublic: { type: 'boolean' },
+    isPopular: { type: 'boolean' },
+    trialDays: { type: 'int', min: 0, max: 90 },
+  });
+
+  const patch = {};
+  for (const [field, column] of Object.entries({
+    name: 'name', tagline: 'tagline',
+    monthlyPricePaise: 'monthly_price_paise', yearlyPricePaise: 'yearly_price_paise',
+    maxUsers: 'max_users', maxCompanies: 'max_companies', storageGb: 'storage_gb',
+    maxUploadsMonth: 'max_uploads_month', trialDays: 'trial_days',
+  })) {
+    if (input[field] !== null && input[field] !== undefined) patch[column] = input[field];
+  }
+  if (input.isPublic !== null && input.isPublic !== undefined) patch.is_public = input.isPublic ? 1 : 0;
+  if (input.isPopular !== null && input.isPopular !== undefined) patch.is_popular = input.isPopular ? 1 : 0;
+  if (!Object.keys(patch).length) throw new BadRequestError('Nothing to update.');
+
+  await db.update('plans', { id: plan.id }, { ...patch, updated_at: nowIso() });
+
+  // Existing subscriptions keep the limits they were sold. Changing a plan
+  // must not silently shrink an organisation that already paid for more.
+  const affected = await db.count(
+    "SELECT COUNT(*) AS n FROM subscriptions WHERE plan_id = ? AND status IN ('active','trialing')",
+    [plan.id]);
+
+  await audit(ctx, {
+    action: 'platform.plan_updated', category: 'billing', severity: 'notice',
+    tenantId: null, entityType: 'plan', entityId: plan.id, entityLabel: plan.name,
+    oldValue: { monthly_price_paise: plan.monthly_price_paise, max_users: plan.max_users },
+    newValue: patch,
+  });
+
+  const fresh = await db.one('SELECT * FROM plans WHERE id = ?', [plan.id]);
+  return ok({
+    plan: fresh,
+    existingSubscriptions: affected,
+    note: affected
+      ? `${affected} existing subscription${affected === 1 ? '' : 's'} keep the limits already granted; the new values apply on their next plan change.`
+      : null,
+  }, { ctx });
+}, { permission: 'plans.manage' });
+
+// ---------------------------------------------------------------------------
+// Revenue
+// ---------------------------------------------------------------------------
+router.get('/revenue', async (ctx) => {
+  const db = new Db(ctx.env.DB);
+
+  const months = recentMonthKeys(12);
+  const series = [];
+  for (const m of months) {
+    const b = periodBounds('monthly', m);
+    const row = await db.one(
+      `SELECT COALESCE(SUM(amount_paise),0) AS collected, COUNT(*) AS payments
+         FROM payments WHERE status = 'success' AND created_at BETWEEN ? AND ?`,
+      [b.start, b.end]);
+    series.push({
+      periodKey: m,
+      collectedPaise: Number(row?.collected) || 0,
+      payments: Number(row?.payments) || 0,
+    });
+  }
+
+  const mrrPlans = await db.one(
+    `SELECT COALESCE(SUM(p.monthly_price_paise),0) AS mrr FROM subscriptions s
+       JOIN plans p ON p.id = s.plan_id WHERE s.status IN ('active','trialing')`);
+  const mrrAddOns = await db.one(
+    `SELECT COALESCE(SUM(monthly_price_paise),0) AS mrr FROM add_on_subscriptions
+      WHERE status IN ('active','trialing')`);
+
+  const byPlan = await db.many(
+    `SELECT p.key, p.name, COUNT(s.id) AS tenants,
+            COALESCE(SUM(p.monthly_price_paise),0) AS mrr
+       FROM plans p LEFT JOIN subscriptions s ON s.plan_id = p.id AND s.status IN ('active','trialing')
+      GROUP BY p.id ORDER BY p.sort_order`);
+
+  const topAddOns = await db.many(
+    `SELECT a.key, a.name, COUNT(s.id) AS subscriptions,
+            COALESCE(SUM(s.monthly_price_paise),0) AS mrr
+       FROM add_ons a LEFT JOIN add_on_subscriptions s ON s.add_on_id = a.id AND s.status = 'active'
+      GROUP BY a.id HAVING subscriptions > 0 ORDER BY mrr DESC LIMIT 15`);
+
+  const outstanding = await db.one(
+    `SELECT COALESCE(SUM(amount_due_paise),0) AS due, COUNT(*) AS invoices
+       FROM invoices WHERE direction = 'platform_to_tenant'
+         AND status IN ('issued','sent','partially_paid','overdue')`);
+
+  const planMrr = Number(mrrPlans?.mrr) || 0;
+  const addOnMrr = Number(mrrAddOns?.mrr) || 0;
+
+  return ok({
+    mrr: {
+      planPaise: planMrr,
+      addOnPaise: addOnMrr,
+      totalPaise: planMrr + addOnMrr,
+      totalLabel: formatINR(planMrr + addOnMrr),
+      // Simple annualisation of the current run rate, not a forecast.
+      annualisedPaise: (planMrr + addOnMrr) * 12,
+    },
+    collections: series,
+    byPlan: byPlan.map(p => ({
+      key: p.key, name: p.name, tenants: Number(p.tenants), mrrPaise: Number(p.mrr),
+    })),
+    topAddOns: topAddOns.map(a => ({
+      key: a.key, name: a.name, subscriptions: Number(a.subscriptions), mrrPaise: Number(a.mrr),
+    })),
+    outstanding: {
+      paise: Number(outstanding?.due) || 0,
+      label: formatINR(Number(outstanding?.due) || 0),
+      invoices: Number(outstanding?.invoices) || 0,
+    },
+    catalogue: { plans: PLANS.length, addOns: ADDONS.length },
+  }, { ctx });
+}, { permission: 'platform.analytics' });
+
+// ---------------------------------------------------------------------------
+// System logs
+// ---------------------------------------------------------------------------
+router.get('/logs', async (ctx) => {
+  const db = new Db(ctx.env.DB);
+  const { page, pageSize } = ctx.pagination({ defaultSize: 50, maxSize: 200 });
+  const offset = (page - 1) * pageSize;
+
+  const filters = [];
+  const params = [];
+  if (ctx.q('level')) { filters.push('level = ?'); params.push(ctx.q('level')); }
+  if (ctx.q('source')) { filters.push('source = ?'); params.push(ctx.q('source')); }
+  if (ctx.q('tenantId')) { filters.push('tenant_id = ?'); params.push(ctx.q('tenantId')); }
+  if (ctx.q('from')) { filters.push('created_at >= ?'); params.push(ctx.q('from')); }
+  if (ctx.q('to')) { filters.push('created_at <= ?'); params.push(ctx.q('to')); }
+  if (ctx.q('q')) {
+    filters.push('(LOWER(message) LIKE ? OR LOWER(COALESCE(path,\'\')) LIKE ?)');
+    const like = `%${ctx.q('q').toLowerCase()}%`;
+    params.push(like, like);
+  }
+  const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+
+  const rows = await db.many(
+    `SELECT * FROM system_logs ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]);
+  const total = await db.count(`SELECT COUNT(*) AS n FROM system_logs ${where}`, params);
+
+  const counts = await db.many(
+    `SELECT level, COUNT(*) AS n FROM system_logs WHERE created_at >= ? GROUP BY level`,
+    [addDays(-7)]);
+
+  return paginated(rows.map(l => ({
+    id: l.id,
+    level: l.level,
+    source: l.source,
+    event: l.event,
+    message: l.message,
+    tenantId: l.tenant_id,
+    requestId: l.request_id,
+    path: l.path,
+    statusCode: l.status_code,
+    durationMs: l.duration_ms,
+    context: safeJson(l.context_json, null),
+    // Stacks are shown to platform staff only; this whole module requires a
+    // platform permission, so there is nobody else here.
+    stack: l.stack,
+    createdAt: l.created_at,
+  })), {
+    page, pageSize, total,
+    last7Days: Object.fromEntries(counts.map(c => [c.level, Number(c.n)])),
+  }, ctx);
+}, { permission: 'platform.logs.view' });
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function toTenant(t) {
+  return {
+    id: t.id,
+    name: t.name,
+    slug: t.slug,
+    legalName: t.legal_name,
+    email: t.email,
+    phone: t.phone,
+    gstin: t.gstin,
+    pan: t.pan,
+    stateCode: t.state_code,
+    status: t.status,
+    franchiseId: t.franchise_id,
+    franchiseName: t.franchise_name ?? null,
+    planKey: t.plan_key ?? null,
+    planName: t.plan_name ?? null,
+    subscriptionStatus: t.subscription_status ?? null,
+    currentPeriodEnd: t.current_period_end ?? null,
+    isDemo: !!t.is_demo,
+    onboardingStep: t.onboarding_step,
+    userCount: t.user_count === undefined ? undefined : Number(t.user_count),
+    clientCount: t.client_count === undefined ? undefined : Number(t.client_count),
+    documentCount: t.document_count === undefined ? undefined : Number(t.document_count),
+    createdAt: t.created_at,
+  };
+}
+
+function safeJson(raw, fallback) {
+  if (!raw) return fallback;
+  try { return JSON.parse(raw); } catch { return fallback; }
+}
+
+export { router as platformRouter };

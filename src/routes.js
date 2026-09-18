@@ -29,6 +29,15 @@ import { auditRouter } from './modules/audit.js';
 import { notificationsRouter } from './modules/notifications.js';
 import { searchRouter } from './modules/search.js';
 import { integrationsRouter } from './modules/integrations.js';
+import { platformRouter } from './modules/platform.js';
+import { leadsRouter } from './modules/leads.js';
+import { messagingRouter } from './modules/messaging.js';
+import { automationRouter } from './modules/automation.js';
+import { supportRouter } from './modules/support.js';
+import { fieldOpsRouter } from './modules/fieldops.js';
+import { workspaceRouter } from './modules/workspace.js';
+import { aiRouter } from './modules/ai.js';
+import { analyticsRouter } from './modules/analytics.js';
 
 export function registerRoutes(router) {
   router.mount('/api/auth', authRouter);
@@ -52,6 +61,18 @@ export function registerRoutes(router) {
   router.mount('/api/notifications', notificationsRouter);
   router.mount('/api/search', searchRouter);
   router.mount('/api/integrations', integrationsRouter);
+  router.mount('/api/platform', platformRouter);
+  router.mount('/api/leads', leadsRouter);
+  router.mount('/api/messaging', messagingRouter);
+  router.mount('/api/automation', automationRouter);
+  router.mount('/api/support', supportRouter);
+  router.mount('/api/attendance', fieldOpsRouter);
+  router.mount('/api/ai', aiRouter);
+  router.mount('/api/analytics', analyticsRouter);
+
+  // Calendar, e-sign, API keys, branding and backups share one module; they
+  // are mounted at their own paths so the API surface reads by capability.
+  router.mount('/api', workspaceRouter);
 
   // Outside /api: binary responses linked directly from the page, and inbound
   // webhooks whose authentication is a signature rather than a session.
