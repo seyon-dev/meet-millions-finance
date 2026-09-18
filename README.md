@@ -48,7 +48,7 @@ npm run dev:wrangler
 
 ```bash
 npm run check        # build checks + the full test suite
-npm test             # 101 tests, no network, no browser
+npm test             # 114 tests, no network, no browser
 npm run build        # the build checks alone
 npm run ui-check     # drives real Chromium at 390/768/1280/1440
 ```
@@ -90,7 +90,7 @@ public/
     screens/        67 screens, one module each, loaded on demand
   assets/css/       tokens, base, components, layout, screens, app
 database/migrations/  10 SQL migrations, 113 tables
-tests/                9 suites, 101 tests
+tests/                12 suites, 114 tests
 ```
 
 ### The rules the code holds to
