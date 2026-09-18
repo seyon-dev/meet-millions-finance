@@ -175,29 +175,83 @@ the application status shows as running.
 
 ## 7. Create the database tables
 
-The application will not work until the database has its tables. This is a
-one-time step.
+The application will not work until the database has its tables. Pick **one**
+of the three ways below.
 
-**In the Node.js application → Terminal** (or SSH), run:
+`npm run migrate` never drops, truncates or deletes anything. It creates what
+is missing, records what it did, and does nothing at all on a second run. If
+the database already holds tables it did not create, it **refuses** rather than
+writing over them.
 
-```bash
-npm run migrate
+### Option A — during the build (try this first)
+
+**Node.js application → Build command:**
+
+```
+npm install && npm run build && npm run migrate
 ```
 
-It prints `Done. 116 tables.`
+Every deploy then checks the schema and applies anything new. On a deploy with
+nothing to do it prints `Already up to date; nothing to do.` and moves on.
 
-It is safe to run twice — the second time it says the schema is already
-applied and changes nothing. It will also **refuse** to run if the database
-already contains data it did not create, rather than write over it.
+**The catch:** this only works if Hostinger's build step can reach your MySQL
+server. Some managed hosts build in a separate environment with no database
+access. If the build log shows
 
-### If there is no terminal
+```
+Could not connect to … — connect ETIMEDOUT
+```
 
-Import the schema by hand instead:
+then it cannot, and the build will fail. Use option B or C instead — the
+failure is loud and costs you nothing but a rebuild.
 
-**hPanel → Databases → phpMyAdmin → your database → Import**, and upload
-`database/mysql-schema.sql` from this repository.
+### Option B — at application startup (no shell, no build access needed)
 
----
+Add one environment variable:
+
+| Variable | Value |
+| --- | --- |
+| `AUTO_MIGRATE` | `true` |
+
+Restart the application. It checks the schema before it starts listening, and
+applies anything missing. The application always has database access — it
+cannot serve a request without it — so this works when option A does not.
+
+It is guarded by the same record of applied migrations, so restarting does not
+re-apply anything. **Run one instance.** If you ever run more than one, leave
+this off on the others.
+
+If the schema cannot be applied, the application **refuses to start** and says
+why, rather than starting up and returning errors on every request.
+
+### Option C — phpMyAdmin (certain, and entirely manual)
+
+No moving parts, and nothing to go wrong:
+
+1. **hPanel → Databases → phpMyAdmin**, and open your database.
+2. Go to the **Import** tab.
+3. Choose the file `database/mysql-schema.sql` from the repository.
+4. Press **Import**.
+
+It should report success and you should see **116 tables**.
+
+This is the surest option for the first load. The cost is that you repeat it
+whenever a future release adds tables — and, because phpMyAdmin does not write
+the record that `npm run migrate` keeps, you should then **also** run option A
+or B so the two agree.
+
+### Which to choose
+
+| | |
+| --- | --- |
+| **First deployment, want it certain** | **Option C**, then turn on **B** for later releases |
+| **Want it automatic from now on** | **Option A**, falling back to **B** if the build cannot reach MySQL |
+| **No build access and no shell** | **Option B** |
+
+### Checking it worked
+
+Visit `https://your-domain/ready`. It answers with JSON describing the setup.
+If the tables are missing it says so instead.
 
 ## 8. Create the first administrator
 

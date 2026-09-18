@@ -10,6 +10,23 @@
 --     mysql -h <host> -u <user> -p <database> < database/mysql-schema.sql
 --
 -- Nothing here drops a database or a table that was not created in this file.
+--
+-- COVERS — the source migrations squashed into this baseline. Read by
+-- scripts/migrate-mysql.mjs to know which are already present, so a migration
+-- added later is recognised as pending rather than silently skipped. Machine
+-- read; keep the format.
+-- COVERS: 0001_identity_and_tenancy.sql
+-- COVERS: 0002_clients_and_documents.sql
+-- COVERS: 0003_tax_reports_workflow.sql
+-- COVERS: 0004_billing_and_addons.sql
+-- COVERS: 0005_communication_and_support.sql
+-- COVERS: 0006_integrations_ai_leads.sql
+-- COVERS: 0007_cloud_calling.sql
+-- COVERS: 0008_audit_ops_settings.sql
+-- COVERS: 0009_permission_override_metadata.sql
+-- COVERS: 0010_oauth_state_hash.sql
+-- COVERS: 0011_chatbot_thread_state.sql
+-- COVERS: 0012_automation_runs_and_queues.sql
 -- ---------------------------------------------------------------------------
 
 SET FOREIGN_KEY_CHECKS = 0;

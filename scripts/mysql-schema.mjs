@@ -402,6 +402,12 @@ lines.push(`-- -----------------------------------------------------------------
 --     mysql -h <host> -u <user> -p <database> < database/mysql-schema.sql
 --
 -- Nothing here drops a database or a table that was not created in this file.
+--
+-- COVERS — the source migrations squashed into this baseline. Read by
+-- scripts/migrate-mysql.mjs to know which are already present, so a migration
+-- added later is recognised as pending rather than silently skipped. Machine
+-- read; keep the format.
+${files.map(f => `-- COVERS: ${f}`).join('\n')}
 -- ---------------------------------------------------------------------------
 
 SET FOREIGN_KEY_CHECKS = 0;

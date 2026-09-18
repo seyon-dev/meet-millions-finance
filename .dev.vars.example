@@ -58,6 +58,13 @@ DB_POOL_SIZE=10
 # without signing in.
 STORAGE_ROOT=/home/USERNAME/mm-storage
 
+# ---- Database migration ----------------------------------------------------
+# When true, the application applies any missing database schema before it
+# starts listening. For managed hosting with no shell access. Guarded by the
+# record of applied migrations, so a restart does not re-apply anything.
+# Run ONE instance with this on. Default false.
+AUTO_MIGRATE=false
+
 # ---- Scheduled jobs --------------------------------------------------------
 # The three cron schedules run inside the Node process. Set to false on any
 # additional instance, or the jobs run twice.

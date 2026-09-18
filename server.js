@@ -289,6 +289,27 @@ export async function start() {
   if (starting) return starting;
 
   starting = (async () => {
+    // Optional, off by default. It exists because a managed host may not give
+    // you a shell: the build step can reach the repository but not always the
+    // database, while the application certainly can — it cannot serve a
+    // request otherwise. Running the migration here is the one place that is
+    // guaranteed to have both the credentials and the network.
+    //
+    // Guarded by the same schema_migrations table the CLI uses, so a second
+    // instance finds nothing to do. Run one instance, or leave this off and
+    // migrate from the build step.
+    if (String(process.env.AUTO_MIGRATE ?? 'false') === 'true') {
+      console.log('  migrate    AUTO_MIGRATE=true — checking the schema');
+      const { runMigration } = await import('./scripts/migrate-runner.mjs');
+      const result = await runMigration();
+      console.log(`  migrate    ${result.message}`);
+      if (!result.ok) {
+        // A schema that did not apply means the application cannot work.
+        // Refusing to listen is better than answering 500 on every request.
+        throw new Error(`The database schema could not be applied: ${result.message}`);
+      }
+    }
+
     const { app, env } = await createServer();
     const tasks = startScheduler(env);
 
