@@ -569,6 +569,59 @@ describe('Hardening', () => {
     assert.deepEqual(hstsFor(new URL('http://localhost:8787/')), {});
   });
 
+  test('the production static-asset path serves a page, with its headers', async () => {
+    // Driven through the real Worker entry point with an ASSETS binding —
+    // the path Cloudflare uses and the dev server does not, because the dev
+    // server serves static files itself. src/index.js called three header
+    // helpers it had never imported, so this threw ReferenceError on every
+    // page load in production while every browser test passed.
+    const worker = (await import('../src/index.js')).default;
+    const { createTestD1, R2Shim } = await import('./helpers/d1.js');
+
+    const env = {
+      DB: createTestD1(),
+      DOCS: new R2Shim(),
+      ASSETS: {
+        fetch: async () => new Response('<!doctype html><html><body></body></html>',
+          { status: 200, headers: { 'Content-Type': 'text/html' } }),
+      },
+      APP_URL: 'https://app.meetmillionscrm.in',
+      AUTH_SECRET: 'x'.repeat(48),
+    };
+
+    const res = await worker.fetch(
+      new Request('https://app.meetmillionscrm.in/'), env,
+      { waitUntil() {}, passThroughOnException() {} });
+
+    assert.equal(res.status, 200, 'the shell must actually be served');
+    assert.match(res.headers.get('content-security-policy') ?? '', /default-src 'self'/);
+    assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+    assert.ok(res.headers.get('strict-transport-security'), 'HSTS over https');
+  });
+
+  test('a non-HTML asset gets the shared headers but no document policy', async () => {
+    const worker = (await import('../src/index.js')).default;
+    const { createTestD1, R2Shim } = await import('./helpers/d1.js');
+
+    const env = {
+      DB: createTestD1(), DOCS: new R2Shim(),
+      ASSETS: {
+        fetch: async () => new Response('body{}',
+          { status: 200, headers: { 'Content-Type': 'text/css' } }),
+      },
+      APP_URL: 'https://app.meetmillionscrm.in', AUTH_SECRET: 'x'.repeat(48),
+    };
+
+    const res = await worker.fetch(
+      new Request('https://app.meetmillionscrm.in/assets/css/app.css'), env,
+      { waitUntil() {}, passThroughOnException() {} });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-security-policy'), null,
+      'a stylesheet has no script or frame to govern');
+    assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+  });
+
   // -- The Meta webhook handshake, which read the wrong variable name -------
 
   test('the Meta lead handshake uses the variable the rest of the system documents', async () => {

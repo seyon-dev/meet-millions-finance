@@ -20,6 +20,7 @@ import { ensureBootstrapped, BOOTSTRAP_VERSION } from './services/bootstrap.js';
 import { runScheduled } from './services/scheduler.js';
 import { logSystemEvent } from './services/logging.js';
 import { applyRateLimit } from './services/ratelimit.js';
+import { documentCsp, BASE_SECURITY_HEADERS, hstsFor } from './http/security.js';
 
 // The router is built once per isolate, not per request.
 const router = createRouter();

@@ -14,6 +14,7 @@ import { BadRequestError, ConflictError, NotFoundError, IntegrationError } from 
 import { Db, safeOrder } from '../db/client.js';
 import { scopeFor } from '../db/tenancy.js';
 import { validate, toE164 } from '../utils/validate.js';
+import { stageRecipients, deliverBroadcast } from '../services/broadcasts.js';
 import { ID } from '../utils/id.js';
 import { nowIso, addHours } from '../utils/time.js';
 import { audit } from '../services/audit.js';
@@ -386,12 +387,24 @@ router.post('/broadcasts', async (ctx) => {
     sent_count: 0,
     delivered_count: 0,
     failed_count: 0,
-    // Queued, not sent: the scheduler delivers it. Reporting it sent here
-    // would be a count of messages nobody has tried to deliver yet.
+    // Queued, not sent. The count below is of messages nobody has tried to
+    // deliver yet, and saying otherwise here would be a lie the screen repeats.
     status: input.scheduledAt ? 'scheduled' : 'queued',
     scheduled_at: input.scheduledAt ?? null,
     created_by: ctx.userId,
   });
+
+  // The recipient list is fixed now, at the moment somebody pressed send,
+  // rather than re-resolved at delivery time: a client added in between must
+  // not silently join a broadcast nobody reviewed.
+  await stageRecipients(scope, broadcast.id, recipients);
+
+  // An immediate broadcast goes out on this request rather than waiting up to
+  // fifteen minutes for a scheduler pass. Deferred, so a slow provider does
+  // not hold the response open; a scheduled one waits for its time.
+  if (!input.scheduledAt) {
+    ctx.defer(deliverBroadcast(ctx.env, { ...broadcast, tenant_id: ctx.tenantId }));
+  }
 
   await audit(ctx, {
     action: 'settings.updated', category: 'communication', severity: 'notice',

@@ -17,6 +17,7 @@ import { nowIso, addDays, monthKey, dayKey, daysBetween, recentMonthKeys } from 
 import { logSystemEvent } from './logging.js';
 import { purgeExpiredAuditLogs, anchorChain } from './audit.js';
 import { runDueAutomationJobs } from './automation.js';
+import { runDueBroadcasts } from './broadcasts.js';
 import { purgeExpiredSessions } from '../auth/session.js';
 import { purgeRateLimits } from './ratelimit.js';
 import { purgeSystemLogs } from './logging.js';
@@ -54,6 +55,9 @@ function selectJobs(cron) {
     // Delayed automation runs on the frequent pass: a rule that says
     // "in 30 minutes" cannot wait for the nightly run.
     ['automationJobs', runDueAutomationJobs],
+    // Scheduled broadcasts, and any immediate one whose delivery was
+    // interrupted or is larger than a single batch.
+    ['broadcasts', runDueBroadcasts],
     ['dueReminders', sendDueReminders],
     ['overdueInvoices', flagOverdueInvoices],
     ['slaBreaches', flagSlaBreaches],

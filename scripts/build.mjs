@@ -23,6 +23,9 @@
  *                  later with a bare error code
  *   bundle       — the pasteable schema drifting from the migrations it
  *                  claims to contain hands somebody an incomplete database
+ *   undefined    — a name called but never imported parses fine and throws
+ *                  ReferenceError on the live route; this found the Worker
+ *                  serving every page with an unimported header helper
  *
  *   node scripts/build.mjs [--quiet]
  */
@@ -272,7 +275,29 @@ const routes = [...app.matchAll(/\broute\('([^']+)',\s*\(\)\s*=>\s*import\('([^'
   say(`  env          ${count} variables documented`);
 }
 
-// ---- 12. The pasteable schema matches the migrations -----------------------
+// ---- 12. Every called name exists -------------------------------------------
+//
+// `node --check` parses; it does not resolve names. A function that was
+// renamed, moved or deleted in a refactor leaves a file that parses perfectly
+// and throws ReferenceError the first time its route is reached. This caught
+// src/index.js calling three header helpers it never imported, which would
+// have thrown on every page load in production — the dev server serves static
+// files by a different path, so no amount of browser testing would have found
+// it.
+{
+  const { execFileSync } = await import('node:child_process');
+  try {
+    execFileSync(process.execPath, ['scripts/check-undefined.mjs'], { stdio: 'pipe' });
+    say('  undefined    every called name resolves');
+  } catch (err) {
+    for (const line of String(err.stdout ?? '').split('\n')) {
+      const hit = line.trim();
+      if (hit && hit.includes('()')) note('undefined', hit);
+    }
+  }
+}
+
+// ---- 13. The pasteable schema matches the migrations -----------------------
 //
 // database/bundled/schema.sql exists so a database can be created from the
 // Cloudflare dashboard, where there is no CLI. It is generated, so it rots the
@@ -289,7 +314,7 @@ const routes = [...app.matchAll(/\broute\('([^']+)',\s*\(\)\s*=>\s*import\('([^'
   }
 }
 
-// ---- 13. Deployment readiness, in a pipeline that deploys --------------------
+// ---- 14. Deployment readiness, in a pipeline that deploys --------------------
 //
 // Cloudflare Workers Builds runs `npm run build` and then a separate deploy
 // command, which defaults to `npx wrangler deploy` — so `npm run deploy`, and
