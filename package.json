@@ -2,7 +2,7 @@
   "name": "meet-millions-finance-crm",
   "version": "1.0.0",
   "private": true,
-  "description": "Meet Millions Finance CRM \u2014 cloud-native GST/TDS compliance and workflow platform for accounting firms and finance teams.",
+  "description": "Meet Millions Finance CRM — cloud-native GST/TDS compliance and workflow platform for accounting firms and finance teams.",
   "type": "module",
   "engines": {
     "node": ">=20.0.0"
@@ -30,6 +30,7 @@
     "legacy:db-migrate-remote": "wrangler d1 migrations apply meetmillions_crm --remote"
   },
   "devDependencies": {
+    "playwright-core": "^1.63.0",
     "wrangler": "^4.0.0"
   },
   "dependencies": {

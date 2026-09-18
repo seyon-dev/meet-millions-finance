@@ -164,7 +164,8 @@
 .mm-link:focus-visible { outline: 2px solid var(--mm-primary); outline-offset: 2px; border-radius: 2px; }
 
 .mm-block { display: block; }
-.mm-auth__legal { margin-top: var(--mm-space-5); max-width: 42ch; }
+/* .mm-auth__legal now lives in layout.css with the rest of the auth block —
+   app.css loads last, so a partial rule here silently overrode it. */
 
 /* The password meter, shared by registration, reset and the change form. */
 .mm-meter__bar {

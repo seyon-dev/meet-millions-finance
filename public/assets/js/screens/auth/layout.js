@@ -19,34 +19,56 @@ const POINTS = [
 
 export function authLayout({ title, subtitle, form, aside = null }) {
   return el('div.mm-auth',
+    // The moving backdrop. Purely decorative and inert to assistive
+    // technology; it sits behind both columns so the seam between them is not
+    // a hard edge.
+    el('div.mm-auth__bg', { 'aria-hidden': 'true' },
+      el('span.mm-auth__orb.mm-auth__orb--a'),
+      el('span.mm-auth__orb.mm-auth__orb--b'),
+      el('span.mm-auth__orb.mm-auth__orb--c'),
+      el('span.mm-auth__grid')),
+
     el('div.mm-auth__panel',
-      el('div.mm-auth__brand',
-        el('span.mm-brand-mark', { text: 'MM' }),
-        el('div.mm-brand-text',
-          el('span.mm-brand-text__name', { text: 'Meet Millions' }),
-          el('span.mm-brand-text__sub', { text: 'Finance CRM' }))),
+      // One column, one measure. These three were previously direct children
+      // of a row-direction flex container, which laid the brand, the form and
+      // the legal note out side by side — the brand floating against the left
+      // edge and the note colliding with the fields.
+      el('div.mm-auth__inner',
+        el('a.mm-auth__brand', { href: '/login', 'aria-label': 'Meet Millions Finance CRM' },
+          el('span.mm-brand-mark', { text: 'MM' }),
+          el('div.mm-brand-text',
+            el('span.mm-brand-text__name', { text: 'Meet Millions' }),
+            el('span.mm-brand-text__sub', { text: 'Finance CRM' }))),
 
-      el('div.mm-auth__card',
-        el('h1.mm-auth__title', { text: title }),
-        subtitle ? el('p.mm-auth__sub', { text: subtitle }) : null,
-        form),
+        el('div.mm-auth__card',
+          el('h1.mm-auth__title', { text: title }),
+          subtitle ? el('p.mm-auth__sub', { text: subtitle }) : null,
+          form),
 
-      el('p.mm-auth__legal.mm-muted.mm-text-xs',
-        'Your session is protected with two-factor authentication where your organisation requires it.')),
+        el('p.mm-auth__legal',
+          el('span.mm-auth__legal-mark', { 'aria-hidden': 'true' }, icon('shield-check', { size: 'sm' })),
+          el('span', {
+            text: 'Your session is protected with two-factor authentication where your organisation requires it.',
+          })))),
 
     aside ?? el('aside.mm-auth__aside', { 'aria-hidden': 'true' },
-      el('h2.mm-auth__headline', { text: 'The whole filing month, in one workspace' }),
-      el('p.mm-auth__lede', {
-        text: 'Meet Millions keeps document collection, verification, tax computation, client sign-off and billing in a single trail — so nothing is chased twice and nothing is filed twice.',
-      }),
-      el('ul.mm-auth__points',
-        ...POINTS.map(point => el('li.mm-auth__point',
-          el('span.mm-auth__point-mark', icon('check', { size: 'sm' })),
-          el('span', { text: point })))),
+      el('div.mm-auth__aside-top',
+        el('p.mm-auth__eyebrow', { text: 'Practice workspace' }),
+        el('h2.mm-auth__headline',
+          el('span', { text: 'The whole filing month' }),
+          el('span.mm-auth__headline-em', { text: 'in one workspace' })),
+        el('p.mm-auth__lede', {
+          text: 'Document collection, verification, tax computation, client sign-off and billing in a single trail — so nothing is chased twice and nothing is filed twice.',
+        }),
+        el('ul.mm-auth__points',
+          ...POINTS.map((point, i) => el('li.mm-auth__point', { style: `--i:${i}` },
+            el('span.mm-auth__point-mark', icon('check', { size: 'sm' })),
+            el('span', { text: point }))))),
+
       el('div.mm-auth__stats',
-        stat('7', 'roles, each with its own view'),
-        stat('30', 'add-on modules'),
-        stat('13', 'integrations, connected when you have keys'))));
+        stat('7', 'Roles'),
+        stat('30', 'Add-on modules'),
+        stat('13', 'Integrations'))));
 }
 
 function stat(value, label) {
