@@ -21,6 +21,8 @@
  *   deploy       — only inside Cloudflare Workers Builds: a placeholder
  *                  resource id, which the deploy would reject a minute
  *                  later with a bare error code
+ *   bundle       — the pasteable schema drifting from the migrations it
+ *                  claims to contain hands somebody an incomplete database
  *
  *   node scripts/build.mjs [--quiet]
  */
@@ -270,7 +272,24 @@ const routes = [...app.matchAll(/\broute\('([^']+)',\s*\(\)\s*=>\s*import\('([^'
   say(`  env          ${count} variables documented`);
 }
 
-// ---- 12. Deployment readiness, in a pipeline that deploys --------------------
+// ---- 12. The pasteable schema matches the migrations -----------------------
+//
+// database/bundled/schema.sql exists so a database can be created from the
+// Cloudflare dashboard, where there is no CLI. It is generated, so it rots the
+// moment a migration is added and nobody regenerates it — and a stale bundle
+// is worse than none: it produces a database that is silently missing tables.
+{
+  const { execFileSync } = await import('node:child_process');
+  try {
+    execFileSync(process.execPath, ['scripts/bundle-migrations.mjs', '--check'], { stdio: 'pipe' });
+    say('  bundle       schema.sql matches the migrations');
+  } catch (err) {
+    note('bundle', `${String(err.stdout ?? '').trim() || 'database/bundled/schema.sql is stale'}`
+      + ' — run: node scripts/bundle-migrations.mjs');
+  }
+}
+
+// ---- 13. Deployment readiness, in a pipeline that deploys --------------------
 //
 // Cloudflare Workers Builds runs `npm run build` and then a separate deploy
 // command, which defaults to `npx wrangler deploy` — so `npm run deploy`, and
