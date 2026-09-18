@@ -45,9 +45,14 @@ npm run migrate                     # create the tables
 npm start                           # http://localhost:3000
 ```
 
-`npm start` is what Hostinger runs. It serves the same application over
-Express, with MySQL and filesystem storage in place of the development
-stand-ins.
+`npm start` runs `node server.js`, which serves the application over Express
+with MySQL and filesystem storage in place of the development stand-ins.
+
+**On Hostinger the entry file is `server.cjs`, not `server.js`.** Hostinger's
+runtime loads the entry with `require()`, which cannot load an ESM module;
+`server.cjs` is a CommonJS bootstrap that reaches the same application through
+`import()` and starts it. It holds no application logic. See
+[docs/hostinger-deployment.md](docs/hostinger-deployment.md).
 
 ### Deploying
 

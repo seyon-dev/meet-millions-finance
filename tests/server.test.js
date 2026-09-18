@@ -23,7 +23,6 @@ describe('Node server', () => {
     store = mkdtempSync(join(tmpdir(), 'mm-store-'));
     Object.assign(process.env, {
       STORAGE_ROOT: store,
-      APP_URL: 'http://127.0.0.1:4187',
       AUTH_SECRET: 'x'.repeat(48),
       ENCRYPTION_KEY: 'y'.repeat(48),
       FILE_SIGNING_SECRET: 'z'.repeat(48),
@@ -36,9 +35,12 @@ describe('Node server', () => {
     const { createServer } = await import('../server.js');
     d1 = createTestD1();
     const { app } = await createServer({ db: d1 });
-    server = app.listen(4187);
+    // Port 0 asks the OS for a free one. A fixed port means a single leftover
+    // process from an interrupted run wedges every later run with EADDRINUSE.
+    server = app.listen(0, '127.0.0.1');
     await new Promise(r => server.once('listening', r));
-    base = 'http://127.0.0.1:4187';
+    base = `http://127.0.0.1:${server.address().port}`;
+    process.env.APP_URL = base;
 
     const reg = await fetch(`${base}/api/auth/register`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -192,6 +194,65 @@ describe('Node server', () => {
     const res = await fetch(`${base}/sales_register.pdf`);
     assert.match(res.headers.get('content-type') ?? '', /text\/html/,
       'a document path falls through to the SPA shell, not to the file');
+  });
+
+  // -- The Hostinger entry point --------------------------------------------
+
+  test('server.js can be require()d — no top-level await in its graph', async () => {
+    // Hostinger's runtime loads the configured entry file with require().
+    // A top-level await anywhere in the graph makes that throw
+    // ERR_REQUIRE_ASYNC_MODULE, which is what returned 503 on every request.
+    const { execFileSync } = await import('node:child_process');
+    // The path goes through the environment, not argv: server.js decides
+    // whether to start by comparing itself to process.argv[1], and passing it
+    // there would make it think it is the entry point and listen for ever.
+    const probe = `try { require(process.env.PROBE_TARGET); console.log('OK'); }
+      catch (e) { console.log('FAIL:' + e.code); }`;
+    const out = execFileSync(process.execPath, ['-e', probe], {
+      encoding: 'utf8',
+      env: { ...process.env, PROBE_TARGET: join(process.cwd(), 'server.js') },
+      timeout: 30000,
+    });
+    assert.match(out, /OK/, out);
+    assert.doesNotMatch(out, /ERR_REQUIRE_ASYNC_MODULE/);
+  });
+
+  test('server.cjs is CommonJS and exports no ESM syntax', async () => {
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync(join(process.cwd(), 'server.cjs'), 'utf8');
+    assert.doesNotMatch(source, /^\s*import\s+[\w{*]/m,
+      'a static import would make this file ESM and defeat its purpose');
+    assert.doesNotMatch(source, /^\s*export\s/m);
+    assert.match(source, /await import\(/, 'it reaches the ESM app through dynamic import');
+  });
+
+  test('server.js exports start(), which the bootstrap depends on', async () => {
+    // Loaded through server.cjs, process.argv[1] is the bootstrap, so the
+    // isMain check in server.js is false and nothing starts by itself. If
+    // start() ever stops being exported, the process would come up and serve
+    // nothing — a 503 that looks like a healthy deploy.
+    const mod = await import('../server.js');
+    assert.equal(typeof mod.start, 'function');
+    assert.equal(typeof mod.default.start, 'function');
+  });
+
+  test('the bootstrap fails loudly when configuration is missing', async () => {
+    const { execFileSync } = await import('node:child_process');
+    let stdout = ''; let code = 0;
+    try {
+      stdout = execFileSync(process.execPath, [join(process.cwd(), 'server.cjs')], {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, STORAGE_ROOT: store },
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 30000,
+      });
+    } catch (err) {
+      code = err.status;
+      stdout = `${err.stdout ?? ''}${err.stderr ?? ''}`;
+    }
+    assert.equal(code, 1, 'a failed start must exit non-zero, not idle behind a 503');
+    assert.match(stdout, /failed to start/i);
+    assert.match(stdout, /DB_HOST/, 'and must name what is missing');
   });
 
   // -- Configuration --------------------------------------------------------

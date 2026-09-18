@@ -266,10 +266,29 @@ export async function createServer({ db = null, storage = null } = {}) {
 // Start
 // ---------------------------------------------------------------------------
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+/**
+ * Guard against starting twice.
+ *
+ * `start()` can be reached two ways — `node server.js` directly, or the
+ * CommonJS bootstrap in server.cjs — and binding the port, the cron schedules
+ * and the database pool twice in one process would be a mess that only shows
+ * up under load. Holding the promise makes a second call a no-op that returns
+ * the first result.
+ */
+let starting = null;
 
-if (isMain) {
-  try {
+/**
+ * Boot the application: build the server, start the scheduler, listen.
+ *
+ * Exported rather than left inline because server.cjs has to be able to call
+ * it. When this file is loaded through `import()` from the bootstrap,
+ * `process.argv[1]` is server.cjs, so the isMain check below is false and
+ * nothing would start on its own.
+ */
+export async function start() {
+  if (starting) return starting;
+
+  starting = (async () => {
     const { app, env } = await createServer();
     const tasks = startScheduler(env);
 
@@ -294,11 +313,26 @@ if (isMain) {
     };
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
-  } catch (err) {
+
+    return { app, env, server, tasks };
+  })();
+
+  return starting;
+}
+
+const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+
+if (isMain) {
+  // Deliberately NOT `await start()`. A top-level await anywhere in this
+  // module's graph makes the whole graph un-`require()`-able, and Hostinger's
+  // runtime loads the configured entry file with require() — which is exactly
+  // the ERR_REQUIRE_ASYNC_MODULE that took the deployment down. A promise
+  // chain does the same job and leaves the module synchronous to load.
+  start().catch((err) => {
     // Configuration failures name what is missing; anything else is a bug.
     console.error(`\n  The server could not start.\n\n    ${err.message}\n`);
     process.exit(1);
-  }
+  });
 }
 
-export default { createServer };
+export default { createServer, start };

@@ -56,11 +56,27 @@ If Hostinger asks you to pick a framework and Express is not offered, choose
 
 | Setting | Value |
 | --- | --- |
-| Node.js version | **20.x or newer** (22.x is fine) |
+| Node.js version | **20.x or newer** (22.x is what this is tested on) |
 | Application root | leave as the default |
-| Application startup file | `server.js` |
+| Application startup file | **`server.cjs`** |
 | Build command | `npm install && npm run build` |
 | Start command | `npm start` |
+
+> **The startup file must be `server.cjs`, not `server.js`.**
+>
+> Hostinger's runtime loads the entry file with `require()`. The application
+> is ESM, and `require()` of an ESM module fails — on Node 20 with
+> `ERR_REQUIRE_ESM`, on Node 22 and 24 with `ERR_REQUIRE_ASYNC_MODULE`. Either
+> way every request returns **503 Service Unavailable**.
+>
+> `server.cjs` is a small CommonJS file that `require()` accepts, and it
+> reaches the application through `import()`, which works on every version. It
+> contains no application logic — it starts the same server.
+>
+> Setting `server.js` here is worse than it looks: on newer Node it loads
+> without error and then never listens, because the application only starts
+> itself when it is the process entry point. The result is a process the host
+> believes is healthy, answering nothing.
 
 ---
 
@@ -149,6 +165,8 @@ the application status shows as running.
 
 | Message | Meaning |
 | --- | --- |
+| `ERR_REQUIRE_ASYNC_MODULE` or `ERR_REQUIRE_ESM` | The startup file is set to `server.js`. Change it to `server.cjs` (step 2) |
+| `The application failed to start` | The lines under it name the cause |
 | `DB_NAME, DB_USER … are not set` | A variable in step 5 is missing or misspelled |
 | `STORAGE_ROOT … is inside the directory this server publishes` | Step 4's folder is in the wrong place |
 | `The storage directory … is not writable` | The path in step 4 is wrong, or the folder does not exist |
@@ -319,7 +337,10 @@ only ever adds; it never drops anything.
 
 **hPanel → the Node.js application → Logs.**
 
-The application prints what it is doing at startup:
+If the application starts, it prints what it is doing. If it does not, it
+prints why and exits — a failed start is never left running behind a 503.
+
+At startup you should see:
 
 ```
   Meet Millions Finance CRM
