@@ -161,6 +161,57 @@ describe('Migration planning', () => {
     }
   });
 
+  test('no index name is declared twice on the same table', () => {
+    // MySQL requires an index name to be unique within its table. A duplicate
+    // is #1061 at import time, part-way through, leaving a half-created
+    // database that then has to be dropped by hand.
+    //
+    // This happened: migration 0012 rebuilds `broadcasts` — SQLite cannot
+    // alter a CHECK constraint, so the table is dropped and recreated — and
+    // recreates idx_broadcasts_tenant. SQLite dropped the original index with
+    // the table; the generator, which flattens every migration into one file,
+    // kept both and emitted them.
+    const sql = readFileSync('database/mysql-schema.sql', 'utf8');
+    const declared = [...sql.matchAll(/^CREATE (?:UNIQUE )?INDEX (\w+) ON (\w+)\s*\(/gm)]
+      .map(m => ({ name: m[1], table: m[2] }));
+
+    assert.ok(declared.length > 100, `expected the full index set, found ${declared.length}`);
+
+    const seen = new Map();
+    const duplicates = [];
+    for (const idx of declared) {
+      const key = `${idx.table}.${idx.name}`;
+      seen.set(key, (seen.get(key) ?? 0) + 1);
+      if (seen.get(key) === 2) duplicates.push(key);
+    }
+
+    assert.deepEqual(duplicates, [],
+      'a duplicate index name fails the import with #1061 half way through');
+  });
+
+  test('every index points at a table the schema creates', () => {
+    // An index on a table that a later migration dropped is #1146, and is the
+    // same oversight as the duplicate above seen from the other side.
+    const sql = readFileSync('database/mysql-schema.sql', 'utf8');
+    const tables = new Set([...sql.matchAll(/^CREATE TABLE (\w+)/gm)].map(m => m[1]));
+    const orphans = [...sql.matchAll(/^CREATE (?:UNIQUE )?INDEX (\w+) ON (\w+)\s*\(/gm)]
+      .filter(m => !tables.has(m[2]))
+      .map(m => `${m[1]} ON ${m[2]}`);
+
+    assert.deepEqual(orphans, [], 'an index on a table that does not exist fails the import');
+  });
+
+  test('an index rebuilt by a later migration keeps the later definition', () => {
+    // Not just "exactly once" — the surviving one must be the current shape.
+    // 0005 indexed (tenant_id, status); 0012 rebuilt the table and indexed
+    // (tenant_id, status, created_at). The newer one is the correct final state.
+    const sql = readFileSync('database/mysql-schema.sql', 'utf8');
+    const line = sql.split('\n').find(l => l.includes('idx_broadcasts_tenant'));
+    assert.ok(line, 'the index must still exist — the fix must not have removed it');
+    assert.match(line, /created_at/,
+      'the surviving definition must be the one the last migration created');
+  });
+
   test('the baseline records which migrations it covers', () => {
     const sql = readFileSync('database/mysql-schema.sql', 'utf8');
     const listed = [...sql.matchAll(/^-- COVERS: (\S+\.sql)$/gm)].map(m => m[1]);

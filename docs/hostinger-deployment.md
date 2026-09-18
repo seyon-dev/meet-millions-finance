@@ -235,6 +235,13 @@ No moving parts, and nothing to go wrong:
 
 It should report success and you should see **116 tables**.
 
+**If an import failed part-way**, the database is left holding whatever was
+created before the error. MySQL has no transactional DDL, so there is nothing
+to roll back. Before importing again, empty it: **phpMyAdmin → your database →
+Check all → With selected: Drop**. Then import the file again. Dropping the
+tables of a half-created database loses nothing, because nothing has used it
+yet — do not do this to a database that has been in service.
+
 This is the surest option for the first load. The cost is that you repeat it
 whenever a future release adds tables — and, because phpMyAdmin does not write
 the record that `npm run migrate` keeps, you should then **also** run option A

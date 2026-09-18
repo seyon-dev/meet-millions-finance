@@ -157,6 +157,10 @@ for (const file of files) {
       if (ren) {
         const from = tables.get(ren[2]);
         if (from) { tables.delete(ren[2]); from.name = ren[4]; tables.set(ren[4], from); }
+        // An index follows its table across a rename, so any already declared
+        // on the old name has to be retargeted or it would point at a table
+        // that no longer exists.
+        for (const idx of indexes) if (idx.table === ren[2]) idx.table = ren[4];
         renames.push([ren[2], ren[4]]);
       }
       continue;
@@ -164,7 +168,19 @@ for (const file of files) {
 
     if (/^DROP\s+TABLE\b/i.test(stmt)) {
       const m = /DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?([`"]?)(\w+)\1/i.exec(stmt);
-      if (m) { tables.delete(m[2]); drops.push(m[2]); }
+      if (m) {
+        tables.delete(m[2]);
+        // Dropping a table drops its indexes with it. Leaving them in the list
+        // is how a table rebuilt by a later migration ended up with the same
+        // index declared twice — SQLite never saw the first one again, but this
+        // generator flattens every migration into one file and emitted both,
+        // so MySQL rejected the import with
+        //   #1061 Duplicate key name 'idx_broadcasts_tenant'
+        for (let i = indexes.length - 1; i >= 0; i -= 1) {
+          if (indexes[i].table === m[2]) indexes.splice(i, 1);
+        }
+        drops.push(m[2]);
+      }
       continue;
     }
 
@@ -463,6 +479,47 @@ if (skippedIndexes.length) {
 lines.push('');
 lines.push('SET FOREIGN_KEY_CHECKS = 1;');
 lines.push('');
+
+// ---------------------------------------------------------------------------
+// Refuse to emit a schema MySQL will reject
+//
+// An index name must be unique within its table; a duplicate is #1061 at
+// import time, part-way through, leaving a half-created database. That is
+// exactly what a rebuilt table produced before DROP TABLE started removing its
+// indexes, and it reached a real import because nothing here looked. Checking
+// at the point of generation means the file on disk is always importable.
+// ---------------------------------------------------------------------------
+{
+  const seen = new Map();          // "table.index" -> count
+  const duplicates = [];
+  for (const idx of translatedIndexes) {
+    if (!tables.has(idx.table)) continue;
+    const key = `${idx.table}.${idx.name}`;
+    seen.set(key, (seen.get(key) ?? 0) + 1);
+    if (seen.get(key) === 2) duplicates.push(key);
+  }
+
+  // A column can only be indexed once under one name too — two names for the
+  // same columns is not an error, but two of the same name is.
+  if (duplicates.length) {
+    console.error(`\n  Refusing to write a schema MySQL would reject.\n`);
+    console.error(`  ${duplicates.length} duplicate index name(s):\n`);
+    for (const d of duplicates) console.error(`    ${d}`);
+    console.error('\n  An index declared twice on one table is #1061 at import time.');
+    console.error('  Usually this means a migration rebuilt the table and the earlier');
+    console.error('  index was not removed with it.\n');
+    process.exit(1);
+  }
+
+  // Every index must point at a table that still exists.
+  const orphans = translatedIndexes.filter(i => !tables.has(i.table));
+  if (orphans.length) {
+    console.error(`\n  ${orphans.length} index(es) point at tables that do not exist:\n`);
+    for (const o of orphans) console.error(`    ${o.name} ON ${o.table}`);
+    console.error('');
+    process.exit(1);
+  }
+}
 
 const text = lines.join('\n');
 

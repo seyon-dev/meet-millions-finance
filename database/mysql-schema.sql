@@ -2865,7 +2865,6 @@ CREATE INDEX idx_deliveries_client ON message_deliveries (client_id, created_at)
 CREATE INDEX idx_automation_tenant ON automation_rules (tenant_id, trigger_key, is_active);
 CREATE INDEX idx_chatthreads_tenant ON chat_threads (tenant_id, status, last_message_at);
 CREATE INDEX idx_chatmessages_thread ON chat_messages (thread_id, created_at);
-CREATE INDEX idx_broadcasts_tenant ON broadcasts (tenant_id, status);
 CREATE INDEX idx_voicenotes_entity ON voice_notes (entity_type, entity_id);
 CREATE INDEX idx_voicenotes_client ON voice_notes (client_id, created_at);
 CREATE INDEX idx_tickets_tenant_status ON support_tickets (tenant_id, status);
