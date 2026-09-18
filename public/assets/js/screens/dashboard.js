@@ -43,9 +43,16 @@ function build(data) {
         button('Refresh', {
           variant: 'ghost', icon: 'refresh', onClick: () => window.location.reload(),
         }),
-        session.can('clients.create')
-          ? button('New client', { variant: 'primary', icon: 'user-plus', href: '/clients?new=1' })
-          : null),
+        // A platform Super Admin holds every permission and has no organisation
+        // to create a client in; offering the button would offer a request that
+        // cannot succeed. Theirs is a new organisation instead.
+        session.isPlatformOnly()
+          ? button('New organisation', {
+              variant: 'primary', icon: 'building', href: '/platform/organisations?new=1',
+            })
+          : session.can('clients.create')
+            ? button('New client', { variant: 'primary', icon: 'user-plus', href: '/clients?new=1' })
+            : null),
     }),
 
     tiles(data.tiles),

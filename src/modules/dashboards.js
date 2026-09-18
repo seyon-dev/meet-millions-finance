@@ -25,7 +25,10 @@ const router = createRouter();
 
 router.get('/', async (ctx) => {
   const role = primaryRole(ctx);
-  const scope = scopeFor(ctx);
+  // The platform Super Admin has no tenant, and the dashboard built for them
+  // reads across all of them. Building a tenant scope first would fail before
+  // the right builder was ever chosen.
+  const scope = ctx.tenantId ? scopeFor(ctx) : null;
 
   const builder = {
     super_admin: platformDashboard,
@@ -51,6 +54,12 @@ router.get('/', async (ctx) => {
  * whole firm's.
  */
 router.get('/badges', async (ctx) => {
+  // The platform Super Admin belongs to no organisation, and every counter
+  // below counts rows inside one. There is nothing to count rather than
+  // something that failed, so say so instead of building a scope that cannot
+  // exist — the shell polls this on every screen, including the platform ones.
+  if (!ctx.tenantId) return ok({}, { ctx });
+
   const scope = scopeFor(ctx);
   const db = new Db(ctx.env.DB);
   const badges = {};
@@ -204,7 +213,7 @@ async function firmDashboard(ctx, scope) {
         tone: Number(counts?.pending_verification) > 20 ? 'warning' : 'default',
       }),
       tile('Outstanding', formatINR(Number(receivables?.outstanding) || 0), {
-        icon: 'rupee', route: '/billing',
+        icon: 'rupee', route: '/billing/invoices',
         tone: Number(receivables?.overdue) > 0 ? 'danger' : 'default',
         caption: Number(receivables?.overdue) > 0
           ? `${formatINR(Number(receivables.overdue))} overdue` : 'All within terms',
@@ -212,7 +221,7 @@ async function firmDashboard(ctx, scope) {
     ],
     secondary: [
       tile('Companies', Number(counts?.companies) || 0, { icon: 'building', route: '/companies' }),
-      tile('Team members', Number(counts?.staff) || 0, { icon: 'team', route: '/users' }),
+      tile('Team members', Number(counts?.staff) || 0, { icon: 'team', route: '/team' }),
       tile('Open queries', Number(counts?.open_queries) || 0, { icon: 'message', route: '/queries' }),
       tile('Overdue tasks', Number(counts?.overdue_tasks) || 0, {
         icon: 'clock', route: '/tasks',
@@ -547,7 +556,7 @@ async function platformDashboard(ctx) {
   return {
     title: 'Platform',
     tiles: [
-      tile('Active tenants', Number(counts?.active_tenants) || 0, { icon: 'building', route: '/platform/tenants' }),
+      tile('Active tenants', Number(counts?.active_tenants) || 0, { icon: 'building', route: '/platform/organisations' }),
       tile('Monthly recurring', formatINR(planMrr + addonMrr), {
         icon: 'rupee', route: '/platform/revenue',
         caption: `${formatINR(planMrr)} plans + ${formatINR(addonMrr)} add-ons`,

@@ -60,8 +60,15 @@ const MANDATORY_TRIGGERS = new Set([
 // The bell menu and the feed
 // ---------------------------------------------------------------------------
 router.get('/', async (ctx) => {
-  const scope = scopeFor(ctx);
   const { page, pageSize } = ctx.pagination({ defaultSize: 20, maxSize: 100 });
+
+  // Same reason as the count below: a tenantless actor has an empty feed, not
+  // a broken one, and the bell must open for them like anybody else.
+  if (!ctx.tenantId) {
+    return paginated([], { page, pageSize, total: 0, unread: 0 }, ctx);
+  }
+
+  const scope = scopeFor(ctx);
 
   const where = scope.where('notifications', 'n');
   where.add('n.user_id = ?', ctx.userId);
@@ -85,6 +92,10 @@ router.get('/', async (ctx) => {
 
 /** Just the badge count, for polling without pulling the whole feed. */
 router.get('/unread-count', async (ctx) => {
+  // Notifications carry a tenant by definition (the column is NOT NULL), so a
+  // platform Super Admin has none. Zero is the true answer.
+  if (!ctx.tenantId) return ok({ unread: 0, urgent: 0 }, { ctx });
+
   const scope = scopeFor(ctx);
   const unread = await scope.rawCount(
     'SELECT COUNT(*) AS n FROM notifications WHERE tenant_id = ? AND user_id = ? AND read_at IS NULL',

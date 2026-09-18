@@ -18,9 +18,11 @@ import { hashPassword } from '../src/auth/password.js';
 import { ID } from '../src/utils/id.js';
 import { nowIso, dayKey, monthKey, addDays, addHours } from '../src/utils/time.js';
 import { PdfDocument } from '../src/services/pdf.js';
-import { putObject, documentKey } from '../src/services/storage.js';
+import { putObject, documentKey, tenantAssetKey } from '../src/services/storage.js';
 
 const PASSWORD = 'Demo-Passw0rd!24';
+/** Sits above every organisation, so it belongs to no tenant. */
+const PLATFORM_EMAIL = 'devika@meetmillions.example';
 
 /** Five invented client companies, spread across states so GST varies. */
 const CLIENTS = [
@@ -89,6 +91,37 @@ export async function seedDemoData(env) {
 
   const tenantScope = new TenantScope(db, tenant.id);
   const ts = nowIso();
+
+  // ---- A demonstration platform Super Admin --------------------------------
+  // The platform screens sit above every organisation, so nobody inside one
+  // can reach them. Without this account the demonstration has six screens
+  // that cannot be opened. It is created only when no Super Admin exists —
+  // a real owner seeded from the environment is never displaced by a demo.
+  const superAdminRole = await db.one("SELECT id FROM roles WHERE key = 'super_admin' AND tenant_id IS NULL");
+  const platformOwner = await db.one(
+    `SELECT u.id FROM users u
+       JOIN user_roles ur ON ur.user_id = u.id
+      WHERE u.tenant_id IS NULL AND ur.role_id = ? LIMIT 1`, [superAdminRole.id]);
+
+  if (!platformOwner) {
+    const superAdminId = ID.user();
+    await db.insert('users', {
+      id: superAdminId,
+      tenant_id: null,
+      email: PLATFORM_EMAIL,
+      password_hash: await hashPassword(PASSWORD),
+      full_name: 'Devika Ramanathan',
+      job_title: 'Platform Operations',
+      status: 'active',
+      theme: 'dark',
+      is_demo: 1,
+      created_at: ts,
+      updated_at: ts,
+    });
+    await db.insert('user_roles', {
+      user_id: superAdminId, role_id: superAdminRole.id, assigned_by: user.id, assigned_at: ts,
+    });
+  }
 
   // ---- Staff ---------------------------------------------------------------
   const staffIds = {};
@@ -376,6 +409,64 @@ export async function seedDemoData(env) {
     });
   }
 
+  // ---- The add-ons -----------------------------------------------------------
+  // Every module is subscribed, so a demonstration shows the whole product
+  // rather than thirty locked cards. Each one still reports its own vendor
+  // honestly: subscribed is not the same as connected, and the screens say so.
+  const addOns = await db.many('SELECT * FROM add_ons WHERE is_available = 1');
+  for (const addOn of addOns) {
+    await db.insert('add_on_subscriptions', {
+      id: ID.addOnSub(),
+      tenant_id: tenant.id,
+      add_on_id: addOn.id,
+      status: 'active',
+      activated_at: addDays(-20),
+      activated_by: user.id,
+      billing_cycle: 'monthly',
+      monthly_price_paise: addOn.monthly_price_paise,
+      setup_fee_paise: addOn.setup_fee_paise,
+      setup_fee_charged: 1,
+      current_period_start: addDays(-20),
+      current_period_end: addDays(10),
+      created_at: addDays(-20),
+      updated_at: addDays(-20),
+    });
+  }
+
+  // ---- Voice notes ---------------------------------------------------------
+  // Real playable audio, so the player on the screen is a player and not a
+  // decoration. Speech-to-text has no credentials on a demo deployment, so the
+  // transcript status says exactly that rather than pretending.
+  const VOICE_NOTE_SECONDS = [14, 9, 21];
+  for (const [i, seconds] of VOICE_NOTE_SECONDS.entries()) {
+    const entry = created[i % created.length];
+    const noteId = ID.voiceNote();
+    const key = tenantAssetKey({
+      tenantId: tenant.id, kind: 'voice-notes', id: noteId, fileName: 'voice-note.wav',
+    });
+    const audio = silentWav(seconds);
+    const stored = await putObject(env, key, audio, {
+      contentType: 'audio/wav', fileName: 'voice-note.wav',
+      metadata: { tenantId: tenant.id, voiceNoteId: noteId },
+    });
+    await db.insert('voice_notes', {
+      id: noteId,
+      tenant_id: tenant.id,
+      client_id: entry.client.id,
+      entity_type: 'client',
+      entity_id: entry.client.id,
+      author_id: executives[i % Math.max(1, executives.length)] ?? user.id,
+      storage_key: key,
+      mime_type: 'audio/wav',
+      duration_seconds: seconds,
+      size_bytes: stored.size,
+      // A demo cannot be transcribed without speech credentials, and saying so
+      // is the point: the screen has to show that state honestly.
+      transcript_status: 'not_configured',
+      created_at: addDays(-i - 1),
+    });
+  }
+
   // ---- The working week: tasks, tickets, leads, chat and the calendar -----
   // These exist so every screen has something honest to show. Without them a
   // demonstration ends at the first empty board, and an empty board teaches
@@ -559,6 +650,7 @@ export async function seedDemoData(env) {
   return {
     email: 'asha@meridiantax.example',
     password: PASSWORD,
+    platformEmail: PLATFORM_EMAIL,
     tenantId: tenant.id,
     clients: created.length,
     staff: STAFF.length,
@@ -587,4 +679,37 @@ function placeholderPdf({ title, client, status }) {
   doc.y -= 14;
   doc.text('It is not a real invoice, return or statement, and must not be filed.', 56, doc.y, { size: 10, colour: '#4A5B7A' });
   return doc.render();
+}
+
+/**
+ * A playable WAV of silence.
+ *
+ * Demonstration audio has to be real audio: a fake byte string would give the
+ * player something it cannot decode, and a broken player looks like a broken
+ * feature. 8kHz mono PCM is the smallest thing every browser will play.
+ */
+function silentWav(seconds) {
+  const rate = 8000;
+  const samples = Math.max(1, Math.round(rate * seconds));
+  const buffer = new ArrayBuffer(44 + samples * 2);
+  const view = new DataView(buffer);
+  const ascii = (offset, text) => {
+    for (let i = 0; i < text.length; i += 1) view.setUint8(offset + i, text.charCodeAt(i));
+  };
+
+  ascii(0, 'RIFF');
+  view.setUint32(4, 36 + samples * 2, true);
+  ascii(8, 'WAVE');
+  ascii(12, 'fmt ');
+  view.setUint32(16, 16, true);          // PCM header length
+  view.setUint16(20, 1, true);           // PCM
+  view.setUint16(22, 1, true);           // mono
+  view.setUint32(24, rate, true);
+  view.setUint32(28, rate * 2, true);    // byte rate
+  view.setUint16(32, 2, true);           // block align
+  view.setUint16(34, 16, true);          // bits per sample
+  ascii(36, 'data');
+  view.setUint32(40, samples * 2, true);
+  // The samples themselves stay zero — silence.
+  return buffer;
 }

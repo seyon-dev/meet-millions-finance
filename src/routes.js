@@ -33,6 +33,7 @@ import { integrationsRouter } from './modules/integrations.js';
 import { platformRouter } from './modules/platform.js';
 import { leadsRouter } from './modules/leads.js';
 import { messagingRouter } from './modules/messaging.js';
+import { voiceNotesRouter } from './modules/voice-notes.js';
 import { automationRouter } from './modules/automation.js';
 import { supportRouter } from './modules/support.js';
 import { fieldOpsRouter } from './modules/fieldops.js';
@@ -66,6 +67,7 @@ export function registerRoutes(router) {
   router.mount('/api/platform', platformRouter);
   router.mount('/api/leads', leadsRouter);
   router.mount('/api/messaging', messagingRouter);
+  router.mount('/api/voice-notes', voiceNotesRouter);
   router.mount('/api/automation', automationRouter);
   router.mount('/api/support', supportRouter);
   router.mount('/api/attendance', fieldOpsRouter);

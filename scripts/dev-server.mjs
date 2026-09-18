@@ -182,8 +182,9 @@ async function seed() {
   const { seedDemoData } = await import('./seed-demo.mjs');
   const result = await seedDemoData(env);
   console.log('\nDemo organisation seeded.');
-  console.log(`  Sign in:  ${result.email}`);
-  console.log(`  Password: ${result.password}\n`);
+  console.log(`  Sign in:   ${result.email}`);
+  if (result.platformEmail) console.log(`  Platform:  ${result.platformEmail}`);
+  console.log(`  Password:  ${result.password}\n`);
 }
 
 server.listen(port, () => {

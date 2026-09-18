@@ -10,7 +10,7 @@
 import { createRouter } from '../http/router.js';
 import { ok } from '../http/response.js';
 import { Db } from '../db/client.js';
-import { scopeFor } from '../db/tenancy.js';
+import { scopeFor, platformScope } from '../db/tenancy.js';
 import { loadClientIdsForUser } from '../auth/identity.js';
 import { formatINR } from '../utils/money.js';
 import { navigationFor } from '../services/navigation.js';
@@ -32,9 +32,37 @@ router.get('/', async (ctx) => {
     }, { ctx });
   }
 
-  const scope = scopeFor(ctx);
   const like = `%${term.toLowerCase()}%`;
   const groups = [];
+
+  // The platform Super Admin belongs to no organisation, so there is no tenant
+  // scope to search within. What they are actually looking for is an
+  // organisation, so that is what the palette finds for them.
+  if (!ctx.tenantId) {
+    if (!ctx.has('platform.manage')) return ok({ term, groups: [], suggestions: [] }, { ctx });
+    const rows = await platformScope(ctx.env, ctx.userId).raw(
+      `SELECT id, name, slug, status, gstin
+         FROM tenants
+        WHERE deleted_at IS NULL
+          AND (LOWER(name) LIKE ? OR LOWER(slug) LIKE ?
+               OR LOWER(COALESCE(legal_name,'')) LIKE ?
+               OR LOWER(COALESCE(gstin,'')) LIKE ?
+               OR LOWER(email) LIKE ?)
+        ORDER BY name LIMIT ?`,
+      [like, like, like, like, like, limitPerGroup]);
+    push(groups, 'Organisations', 'building', rows.map(r => ({
+      id: r.id,
+      title: r.name,
+      subtitle: [r.slug, r.gstin].filter(Boolean).join(' · '),
+      badge: r.status,
+      // There is no per-organisation URL — the list opens each one in place —
+      // so this lands on the list already filtered to it.
+      path: `/platform/organisations?q=${encodeURIComponent(r.name)}`,
+    })));
+    return ok({ term, groups, suggestions: await navigationSuggestions(ctx) }, { ctx });
+  }
+
+  const scope = scopeFor(ctx);
 
   // A client user is confined to their own records, whatever they search for.
   const clientIds = ctx.isClient

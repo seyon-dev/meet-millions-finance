@@ -61,6 +61,13 @@ export function hasRole(key) {
 export function isClient() { return hasRole('client'); }
 export function isSuperAdmin() { return hasRole('super_admin'); }
 
+/**
+ * True when this account belongs to no organisation — the platform Super
+ * Admin. Everything outside the platform screens works inside a tenant, so
+ * this, not the role, is what decides whether such a control can work at all.
+ */
+export function isPlatformOnly() { return !!state.user && !state.tenant; }
+
 /** Is a plan or add-on feature unlocked? */
 export function hasFeature(key) { return state.features.has(key); }
 

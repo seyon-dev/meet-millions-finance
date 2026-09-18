@@ -27,6 +27,12 @@ export function dataTable({
   toolbar = null,
   search = true,
   searchPlaceholder = 'Search…',
+  // Let a screen open already filtered — arriving from a search result, for
+  // instance, so the row somebody asked for is the one in front of them.
+  // Seeding the table's own state, rather than forcing the value into every
+  // request, is what lets the person then clear it.
+  initialQuery = '',
+  initialFilters = null,
   filters = null,
   defaultSort = null,
   defaultDir = 'desc',
@@ -40,8 +46,8 @@ export function dataTable({
     pageSize,
     sort: defaultSort,
     dir: defaultDir,
-    q: '',
-    filters: {},
+    q: initialQuery,
+    filters: { ...(initialFilters ?? {}) },
     rows: [],
     meta: {},
     selected: new Set(),
@@ -67,6 +73,7 @@ export function dataTable({
             type: 'search',
             placeholder: searchPlaceholder,
             'aria-label': searchPlaceholder,
+            value: initialQuery,
             onInput: debounce((e) => {
               state.q = e.target.value.trim();
               state.page = 1;

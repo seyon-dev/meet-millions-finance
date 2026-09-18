@@ -30,6 +30,9 @@ function readFlag(name) {
 }
 
 const CREDENTIALS = { email: 'asha@meridiantax.example', password: 'Demo-Passw0rd!24' };
+// The platform screens sit above every organisation, so the tenant owner
+// cannot reach them — and should not be able to. They need their own session.
+const PLATFORM_CREDENTIALS = { email: 'devika@meetmillions.example', password: 'Demo-Passw0rd!24' };
 
 const VIEWPORTS = [
   { name: 'phone', width: 390, height: 844 },
@@ -64,6 +67,7 @@ const ROUTES = [
   { path: '/calls', expect: 'h1' },
   { path: '/messaging/inbox', expect: 'h1' },
   { path: '/leads', expect: 'h1' },
+  { path: '/voice-notes', expect: 'h1' },
   { path: '/support', expect: 'h1' },
   { path: '/calendar', expect: 'h1' },
   { path: '/automation', expect: 'h1' },
@@ -81,9 +85,39 @@ const ROUTES = [
   { path: '/settings/api', expect: 'h1' },
   { path: '/settings/backup', expect: 'h1' },
   { path: '/settings/notifications', expect: 'h1' },
+  { path: '/platform/organisations', expect: 'h1', as: 'platform' },
+  { path: '/platform/franchises', expect: 'h1', as: 'platform' },
+  { path: '/platform/plans', expect: 'h1', as: 'platform' },
+  { path: '/platform/revenue', expect: 'h1', as: 'platform' },
+  { path: '/platform/logs', expect: 'h1', as: 'platform' },
 ];
 
 let sessionToken = null;
+let platformToken = null;
+
+/**
+ * The application limits a signed-in user to 300 requests a minute, and a full
+ * sweep issues roughly six per screen. That limit is correct — walking every
+ * screen at machine speed is exactly the shape of traffic it exists to blunt —
+ * so the check paces itself against it rather than the limit being relaxed to
+ * suit a tool.
+ */
+const BUDGET = { max: 240, windowMs: 60_000, count: 0, since: Date.now() };
+
+async function spendRequestBudget(page, cost) {
+  const elapsed = Date.now() - BUDGET.since;
+  if (elapsed >= BUDGET.windowMs) {
+    BUDGET.count = 0;
+    BUDGET.since = Date.now();
+  }
+  if (BUDGET.count + cost > BUDGET.max) {
+    const wait = BUDGET.windowMs - (Date.now() - BUDGET.since) + 1500;
+    if (wait > 0) await page.waitForTimeout(wait);
+    BUDGET.count = 0;
+    BUDGET.since = Date.now();
+  }
+  BUDGET.count += cost;
+}
 
 const problems = [];
 const record = (route, viewport, kind, detail) => {
@@ -123,6 +157,7 @@ try {
     const page = await context.newPage();
 
     let currentRoute = '/login';
+    let activeToken = null;
     page.on('console', (message) => {
       if (message.type() !== 'error') return;
       const text = message.text();
@@ -141,6 +176,11 @@ try {
       record(currentRoute, viewport.name, 'request', `${request.method()} ${request.url()} — ${request.failure()?.errorText}`);
     });
     page.on('response', (response) => {
+      if (response.status() === 429) {
+        record(currentRoute, viewport.name, 'paced',
+          'The check outran the request budget; raise the pause in spendRequestBudget.');
+        return;
+      }
       if (response.status() < 500) return;
       record(currentRoute, viewport.name, 'server', `${response.status()} ${response.url()}`);
     });
@@ -164,6 +204,23 @@ try {
         continue;
       }
       sessionToken = await page.evaluate(() => localStorage.getItem('mm.token'));
+
+      // The second sign-in goes through the API rather than the form: four
+      // form sign-ins per run would trip the login rate limit, which is the
+      // rate limit working rather than a fault to design around.
+      platformToken = await page.evaluate(async (creds) => {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(creds),
+        });
+        const envelope = await response.json().catch(() => null);
+        return envelope?.data?.token ?? null;
+      }, PLATFORM_CREDENTIALS);
+      if (!platformToken) {
+        record('/login', viewport.name, 'blocked',
+          'No platform session — the demo Super Admin did not sign in, so /platform/* was not walked.');
+      }
     } else {
       await page.goto(`${base}/login`, { waitUntil: 'domcontentloaded' });
       await page.evaluate(token => localStorage.setItem('mm.token', token), sessionToken);
@@ -178,6 +235,8 @@ try {
       }
     }
 
+    activeToken = sessionToken;
+
     if (shots) {
       await page.screenshot({ path: `${shotDir}/${viewport.name}-login-done.png`, fullPage: false });
     }
@@ -187,6 +246,17 @@ try {
       if (only && !route.path.includes(only)) continue;
       if (onlyList.length && !onlyList.includes(route.path)) continue;
       currentRoute = route.path;
+
+      const wanted = route.as === 'platform' ? platformToken : sessionToken;
+      if (!wanted) continue;
+      if (wanted !== activeToken) {
+        await page.evaluate(token => localStorage.setItem('mm.token', token), wanted);
+        activeToken = wanted;
+      }
+
+      // A screen load costs the session bootstrap, the badge poll, the unread
+      // count and whatever the screen itself fetches.
+      await spendRequestBudget(page, 8);
 
       await page.goto(base + route.path, { waitUntil: 'networkidle' });
       await page.waitForTimeout(220);

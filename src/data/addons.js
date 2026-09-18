@@ -82,7 +82,7 @@ export const ADDONS = [
     featureKeys: ['email_automation'],
     icon: 'mail',
     accent: 'comm',
-    route: '/automation/email',
+    route: '/automation',
   },
   {
     number: 3,
@@ -110,7 +110,7 @@ export const ADDONS = [
     featureKeys: ['sms_automation'],
     icon: 'smartphone',
     accent: 'comm',
-    route: '/automation/sms',
+    route: '/automation',
   },
   {
     number: 4,
@@ -137,7 +137,7 @@ export const ADDONS = [
     featureKeys: ['voice_notes'],
     icon: 'mic',
     accent: 'comm',
-    route: '/automation/voice-notes',
+    route: '/voice-notes',
   },
 
   // ===== CATEGORY 02 — LEAD & DATA CAPTURE ==================================
@@ -167,7 +167,7 @@ export const ADDONS = [
     featureKeys: ['meta_lead_ads'],
     icon: 'megaphone',
     accent: 'pay',
-    route: '/leads/inbox',
+    route: '/leads',
   },
   {
     number: 6,
@@ -195,7 +195,7 @@ export const ADDONS = [
     featureKeys: ['google_sheets'],
     icon: 'table',
     accent: 'pay',
-    route: '/integrations/google-sheets',
+    route: '/settings/integrations',
   },
   {
     number: 7,
@@ -223,7 +223,7 @@ export const ADDONS = [
     featureKeys: ['google_forms'],
     icon: 'clipboard-list',
     accent: 'pay',
-    route: '/integrations/google-forms',
+    route: '/settings/integrations',
   },
   {
     number: 8,
@@ -252,7 +252,7 @@ export const ADDONS = [
     featureKeys: ['website_forms'],
     icon: 'globe',
     accent: 'pay',
-    route: '/integrations/website-forms',
+    route: '/settings/integrations',
   },
 
   // ===== CATEGORY 03 — AI INTELLIGENCE ======================================
@@ -312,7 +312,7 @@ export const ADDONS = [
     featureKeys: ['ai_doc_verification'],
     icon: 'shield-check',
     accent: 'ai',
-    route: '/ai/verification',
+    route: '/verification',
   },
   {
     number: 11,
@@ -400,7 +400,7 @@ export const ADDONS = [
     featureKeys: ['payment_gateway'],
     icon: 'credit-card',
     accent: 'pay',
-    route: '/billing/gateways',
+    route: '/settings/integrations',
   },
   {
     number: 14,
@@ -428,7 +428,7 @@ export const ADDONS = [
     featureKeys: ['esign'],
     icon: 'pen-tool',
     accent: 'pay',
-    route: '/esign',
+    route: '/documents',
   },
   {
     number: 15,
@@ -455,7 +455,7 @@ export const ADDONS = [
     featureKeys: ['google_drive'],
     icon: 'hard-drive',
     accent: 'pay',
-    route: '/integrations/google-drive',
+    route: '/settings/integrations',
   },
   {
     number: 16,
@@ -482,7 +482,7 @@ export const ADDONS = [
     featureKeys: ['dropbox'],
     icon: 'box',
     accent: 'pay',
-    route: '/integrations/dropbox',
+    route: '/settings/integrations',
   },
   {
     number: 17,
@@ -509,7 +509,7 @@ export const ADDONS = [
     featureKeys: ['onedrive'],
     icon: 'cloud',
     accent: 'pay',
-    route: '/integrations/onedrive',
+    route: '/settings/integrations',
   },
 
   // ===== CATEGORY 05 — MOBILE, PORTAL & FIELD OPS ===========================
@@ -539,7 +539,7 @@ export const ADDONS = [
     featureKeys: ['mobile_app'],
     icon: 'smartphone',
     accent: 'comm',
-    route: '/mobile',
+    route: null,
   },
   {
     number: 19,

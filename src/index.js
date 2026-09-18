@@ -16,6 +16,7 @@ import { AppError, NotFoundError } from './http/errors.js';
 import { createRouter } from './http/router.js';
 import { authenticate, authorize } from './auth/middleware.js';
 import { registerRoutes } from './routes.js';
+import { ensureBootstrapped, BOOTSTRAP_VERSION } from './services/bootstrap.js';
 import { runScheduled } from './services/scheduler.js';
 import { logSystemEvent } from './services/logging.js';
 import { applyRateLimit } from './services/ratelimit.js';
@@ -31,7 +32,8 @@ registerRoutes(router);
 
 const WORKER_PATHS = ['/api/', '/webhooks/', '/files/'];
 function isWorkerPath(pathname) {
-  return WORKER_PATHS.some(p => pathname.startsWith(p)) || pathname === '/api' || pathname === '/health';
+  return WORKER_PATHS.some(p => pathname.startsWith(p))
+    || pathname === '/api' || pathname === '/health' || pathname === '/ready';
 }
 
 export default {
@@ -46,10 +48,35 @@ export default {
 
     if (ctx.method === 'OPTIONS') return preflight(request, env);
 
+    // Liveness. Deliberately answers without touching the database, so it stays
+    // truthful about the Worker when D1 is the thing that is broken.
     if (ctx.pathname === '/health') {
       return json({
         success: true,
         data: { status: 'ok', app: env.APP_NAME ?? 'Meet Millions Finance CRM', env: env.APP_ENV ?? 'unknown' },
+        error: null,
+        meta: { timestamp: new Date().toISOString() },
+      });
+    }
+
+    // A Worker has no deploy hook: nothing runs between `wrangler deploy` and
+    // the first request. The catalogue every request is authorised against —
+    // permissions, roles, plans, the add-on list — is therefore seeded here,
+    // once per isolate, before the router is entered.
+    const bootstrap = await ensureBootstrapped(env);
+
+    // Readiness, for a deploy pipeline: says whether this deployment has its
+    // catalogue, and seeds it if not.
+    if (ctx.pathname === '/ready') {
+      return json({
+        success: true,
+        data: {
+          status: 'ready',
+          seededNow: bootstrap.ran,
+          catalogueVersion: BOOTSTRAP_VERSION,
+          // Present only on the request that did the seeding.
+          platformOwner: bootstrap.report?.platformOwner ?? null,
+        },
         error: null,
         meta: { timestamp: new Date().toISOString() },
       });
@@ -92,7 +119,8 @@ export default {
 
   /** Cron triggers: reminders, digests, retention, sync, rollups. */
   async scheduled(event, env, executionCtx) {
-    executionCtx.waitUntil(runScheduled(event, env));
+    executionCtx.waitUntil(
+      ensureBootstrapped(env).then(() => runScheduled(event, env)));
   },
 };
 

@@ -500,6 +500,7 @@
    STATES — loading, empty, error, permission
    -------------------------------------------------------------------------- */
 .mm-skeleton {
+  display: block;
   position: relative; overflow: hidden;
   background: var(--mm-bg-surface-2); border-radius: var(--mm-radius-sm);
 }
@@ -518,7 +519,7 @@
 .mm-skeleton--chart { height: 240px; border-radius: var(--mm-radius-lg); }
 .mm-skeleton--circle { border-radius: 50%; width: 32px; height: 32px; }
 
-.mm-spinner { width: 17px; height: 17px; border: 2px solid var(--mm-border-strong); border-top-color: var(--mm-primary); border-radius: 50%; animation: mm-spin 0.62s linear infinite; }
+.mm-spinner { display: inline-block; width: 17px; height: 17px; border: 2px solid var(--mm-border-strong); border-top-color: var(--mm-primary); border-radius: 50%; animation: mm-spin 0.62s linear infinite; }
 .mm-spinner--lg { width: 30px; height: 30px; border-width: 2.5px; }
 
 .mm-state {

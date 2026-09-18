@@ -18,6 +18,16 @@ ENCRYPTION_KEY=replace-with-openssl-rand-base64-32
 # Signs private R2 document download URLs.
 FILE_SIGNING_SECRET=replace-with-openssl-rand-base64-32
 
+# ---- First platform Super Admin (optional, first boot only) -----------------
+# There is deliberately no default password. Set these two before the first
+# request, and bootstrap creates the one platform Super Admin, forced to change
+# its password at first sign-in. Once that account exists these are ignored, so
+# clear them again afterwards. A password shorter than 12 characters is refused
+# and no account is created.
+PLATFORM_OWNER_EMAIL=
+PLATFORM_OWNER_PASSWORD=
+PLATFORM_OWNER_NAME=Platform Owner
+
 # ---- Email — Amazon SES (Integration Stack: transactional & reports) --------
 SES_REGION=ap-south-1
 SES_ACCESS_KEY_ID=

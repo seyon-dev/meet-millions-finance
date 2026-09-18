@@ -21,7 +21,7 @@
 
 .mm-legend { display: flex; flex-wrap: wrap; gap: var(--mm-space-3) var(--mm-space-4); margin-top: var(--mm-space-4); }
 .mm-legend__item { display: flex; align-items: center; gap: var(--mm-space-2); font-size: var(--mm-text-xs); color: var(--mm-text-secondary); }
-.mm-legend__swatch { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
+.mm-legend__swatch { display: inline-block; width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
 .mm-legend__value { color: var(--mm-text-primary); font-weight: var(--mm-weight-semibold); font-variant-numeric: tabular-nums; }
 
 .mm-chart-empty { display: flex; align-items: center; justify-content: center; min-height: 180px; color: var(--mm-text-tertiary); font-size: var(--mm-text-sm); text-align: center; padding: var(--mm-space-5); }
@@ -29,8 +29,8 @@
 /* Horizontal ranked bars — used for leaderboards and distributions. */
 .mm-rankbar { display: flex; flex-direction: column; gap: var(--mm-space-3); }
 .mm-rankbar__row { display: grid; grid-template-columns: minmax(96px, 1.1fr) 3fr minmax(52px, auto); gap: var(--mm-space-3); align-items: center; font-size: var(--mm-text-sm); }
-.mm-rankbar__track { height: 8px; border-radius: var(--mm-radius-pill); background: var(--mm-bg-inset); overflow: hidden; }
-.mm-rankbar__fill { height: 100%; border-radius: var(--mm-radius-pill); transition: width var(--mm-dur-slow) var(--mm-ease-out); }
+.mm-rankbar__track { display: block; height: 8px; border-radius: var(--mm-radius-pill); background: var(--mm-bg-inset); overflow: hidden; }
+.mm-rankbar__fill { display: block; height: 100%; border-radius: var(--mm-radius-pill); transition: width var(--mm-dur-slow) var(--mm-ease-out); }
 .mm-rankbar__val { text-align: right; font-variant-numeric: tabular-nums; font-weight: var(--mm-weight-semibold); color: var(--mm-text-primary); }
 @media (max-width: 560px) { .mm-rankbar__row { grid-template-columns: minmax(80px, 1fr) 2fr minmax(44px, auto); font-size: var(--mm-text-xs); } }
 
@@ -301,13 +301,13 @@
 .mm-chart__baseline { stroke: var(--mm-chart-grid); stroke-width: 1; shape-rendering: crispEdges; }
 .mm-chart__label { fill: var(--mm-text-tertiary); font-size: 10px; }
 
-.mm-chart__bar { fill: var(--mm-brand); }
+.mm-chart__bar { fill: var(--mm-primary); }
 .mm-chart__bar.is-highlight { fill: var(--mm-accent); }
-.mm-chart__line { stroke: var(--mm-brand); }
-.mm-chart__area { fill: var(--mm-brand); }
-.mm-chart__dot { fill: var(--mm-brand); }
+.mm-chart__line { stroke: var(--mm-primary); }
+.mm-chart__area { fill: var(--mm-primary); }
+.mm-chart__dot { fill: var(--mm-primary); }
 
-.mm-chart__arc--brand   { stroke: var(--mm-brand); }
+.mm-chart__arc--brand   { stroke: var(--mm-primary); }
 .mm-chart__arc--accent  { stroke: var(--mm-accent); }
 .mm-chart__arc--success { stroke: var(--mm-success); }
 .mm-chart__arc--warning { stroke: var(--mm-warning); }
@@ -315,7 +315,7 @@
 .mm-chart__arc--violet  { stroke: var(--mm-ai); }
 .mm-chart__arc--neutral { stroke: var(--mm-border-strong); }
 
-.mm-legend__swatch--brand   { background: var(--mm-brand); }
+.mm-legend__swatch--brand   { background: var(--mm-primary); }
 .mm-legend__swatch--accent  { background: var(--mm-accent); }
 .mm-legend__swatch--success { background: var(--mm-success); }
 .mm-legend__swatch--warning { background: var(--mm-warning); }
@@ -325,7 +325,7 @@
 .mm-legend__label { color: var(--mm-text-secondary); }
 
 .mm-rankbar__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mm-text-secondary); }
-.mm-rankbar__fill { background: var(--mm-brand); }
+.mm-rankbar__fill { background: var(--mm-primary); }
 .mm-rankbar__fill--success { background: var(--mm-success); }
 .mm-rankbar__fill--warning { background: var(--mm-warning); }
 .mm-rankbar__fill--danger  { background: var(--mm-danger); }
@@ -334,7 +334,7 @@
 /* Sparkline — sized by its container, so it fits inside a stat tile. */
 .mm-spark { width: 100%; height: 28px; display: block; overflow: visible; }
 .mm-spark__line { fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
-.mm-spark--brand   .mm-spark__line { stroke: var(--mm-brand); }
+.mm-spark--brand   .mm-spark__line { stroke: var(--mm-primary); }
 .mm-spark--success .mm-spark__line { stroke: var(--mm-success); }
 .mm-spark--danger  .mm-spark__line { stroke: var(--mm-danger); }
 .mm-spark--warning .mm-spark__line { stroke: var(--mm-warning); }
@@ -528,7 +528,7 @@
   cursor: pointer; transition: border-color var(--mm-dur-fast), transform var(--mm-dur-fast), box-shadow var(--mm-dur-fast);
 }
 .mm-taskcard:hover { border-color: var(--mm-border-strong); box-shadow: var(--mm-shadow-sm); transform: translateY(-1px); }
-.mm-taskcard:focus-visible { outline: 2px solid var(--mm-brand); outline-offset: 2px; }
+.mm-taskcard:focus-visible { outline: 2px solid var(--mm-primary); outline-offset: 2px; }
 .mm-taskcard.is-overdue { border-left: 3px solid var(--mm-danger); }
 .mm-taskcard.is-dragging { opacity: 0.45; }
 .mm-taskcard__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--mm-space-2); }
@@ -543,7 +543,7 @@
    -------------------------------------------------------------------------- */
 .mm-addon { cursor: pointer; transition: border-color var(--mm-dur-fast), transform var(--mm-dur-fast), box-shadow var(--mm-dur-fast); }
 .mm-addon:hover { border-color: var(--mm-border-strong); box-shadow: var(--mm-shadow-md); transform: translateY(-2px); }
-.mm-addon:focus-visible { outline: 2px solid var(--mm-brand); outline-offset: 2px; }
+.mm-addon:focus-visible { outline: 2px solid var(--mm-primary); outline-offset: 2px; }
 .mm-addon.is-incomplete { border-color: color-mix(in srgb, var(--mm-warning) 45%, transparent); }
 .mm-addon__cta { font-size: var(--mm-text-xs); color: var(--mm-accent); }
 
@@ -569,7 +569,7 @@
   position: absolute; top: calc(var(--mm-space-3) * -1); left: var(--mm-space-4);
   font-size: var(--mm-text-2xs); text-transform: uppercase; letter-spacing: var(--mm-tracking-caps);
   padding: 2px var(--mm-space-2); border-radius: var(--mm-radius-pill);
-  background: var(--mm-accent); color: var(--mm-bg-base);
+  background: var(--mm-accent); color: var(--mm-bg-canvas);
 }
 .mm-plan__flag--current { background: var(--mm-success); color: #fff; }
 .mm-plan__per { font-size: var(--mm-text-xs); color: var(--mm-text-tertiary); }
@@ -652,6 +652,7 @@
 .mm-list--tight .mm-list__row { padding-top: var(--mm-space-2); padding-bottom: var(--mm-space-2); }
 .mm-list__row--live { background: var(--mm-success-soft); }
 .mm-livedot {
+  display: inline-block;
   width: 9px; height: 9px; border-radius: 50%; background: var(--mm-success); flex-shrink: 0;
   box-shadow: 0 0 0 0 color-mix(in srgb, var(--mm-success) 60%, transparent);
   animation: mm-livepulse 1.8s var(--mm-ease-out) infinite;
@@ -708,7 +709,7 @@
 /* A satisfaction rating, chosen by clicking. */
 .mm-rate__star { background: none; border: 0; padding: 2px; cursor: pointer; color: var(--mm-text-disabled); }
 .mm-rate__star.is-chosen { color: var(--mm-success); }
-.mm-rate__star:focus-visible { outline: 2px solid var(--mm-brand); outline-offset: 2px; border-radius: var(--mm-radius-sm); }
+.mm-rate__star:focus-visible { outline: 2px solid var(--mm-primary); outline-offset: 2px; border-radius: var(--mm-radius-sm); }
 
 /* --------------------------------------------------------------------------
    Calendar
@@ -745,4 +746,152 @@
    would leave an empty card with a month navigator in it. */
 @media (max-width: 860px) {
   .mm-card--month { display: none; }
+}
+
+/* --------------------------------------------------------------------------
+   AI assistant
+   -------------------------------------------------------------------------- */
+.mm-thread--chat { padding: var(--mm-space-4) var(--mm-space-5); }
+.mm-thread__item.is-assistant { background: var(--mm-ai-soft); border-radius: var(--mm-radius-md); padding: var(--mm-space-3); border-top-color: transparent; }
+.mm-ai-avatar {
+  width: 28px; height: 28px; flex-shrink: 0; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--mm-ai-soft); color: var(--mm-ai);
+}
+.mm-chip {
+  padding: var(--mm-space-2) var(--mm-space-3); border-radius: var(--mm-radius-pill);
+  background: var(--mm-bg-surface-2); border: 1px solid var(--mm-border-subtle);
+  color: var(--mm-text-secondary); font-size: var(--mm-text-xs); cursor: pointer;
+  text-align: left; max-width: 100%;
+}
+.mm-chip:hover { border-color: var(--mm-border-strong); color: var(--mm-text-primary); }
+.mm-spinner--sm { width: 12px; height: 12px; border-width: 2px; }
+.mm-p-4 { padding: var(--mm-space-4); }
+
+/* A per-field confidence, beside its label. */
+.mm-field__label { display: flex; align-items: baseline; justify-content: space-between; gap: var(--mm-space-2); }
+.mm-field__conf { font-size: var(--mm-text-2xs); font-variant-numeric: tabular-nums; }
+.mm-card--ai.is-read { opacity: 0.72; }
+
+/* A column toggle in the report builder. */
+.mm-chip--check { display: inline-flex; align-items: baseline; gap: var(--mm-space-2); user-select: none; }
+.mm-chip--check.is-on { border-color: var(--mm-primary); background: var(--mm-primary-soft); color: var(--mm-primary); }
+.mm-text-2xs { font-size: var(--mm-text-2xs); }
+
+/* --------------------------------------------------------------------------
+   Settings
+   -------------------------------------------------------------------------- */
+.mm-settings-card { text-decoration: none; color: inherit; display: block; }
+.mm-settings-card__icon {
+  width: 38px; height: 38px; flex-shrink: 0; border-radius: var(--mm-radius-md);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--mm-bg-surface-3); color: var(--mm-text-secondary);
+  border: 1px solid var(--mm-border-subtle);
+}
+.mm-settings-card:hover .mm-settings-card__icon { color: var(--mm-primary); border-color: var(--mm-primary); }
+.mm-settings-group { padding: var(--mm-space-2) 0; border-bottom: 1px solid var(--mm-border-subtle); }
+.mm-settings-group:last-of-type { border-bottom: 0; }
+.mm-switch--radio { align-items: flex-start; }
+
+/* The two-factor QR, and the recovery codes beside it. */
+.mm-qr { background: #fff; padding: var(--mm-space-2); border-radius: var(--mm-radius-md); line-height: 0; flex-shrink: 0; }
+.mm-codes {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--mm-space-2);
+  margin-top: var(--mm-space-3); padding: var(--mm-space-3);
+  background: var(--mm-bg-inset); border-radius: var(--mm-radius-md);
+  font-size: var(--mm-text-sm); letter-spacing: 0.04em;
+}
+
+/* The notification preference grid. */
+.mm-prefs__group td {
+  font-size: var(--mm-text-2xs); text-transform: uppercase; letter-spacing: var(--mm-tracking-caps);
+  color: var(--mm-text-tertiary); background: var(--mm-bg-surface-2); padding-top: var(--mm-space-3);
+}
+.mm-prefs th { white-space: nowrap; }
+
+/* --------------------------------------------------------------------------
+   Branding preview
+   -------------------------------------------------------------------------- */
+.mm-colour { width: 100%; height: 38px; padding: 2px; cursor: pointer; }
+.mm-brandpreview {
+  border-radius: var(--mm-radius-lg); overflow: hidden;
+  border: 1px solid var(--mm-border-subtle); background: var(--mm-bg-surface-2);
+}
+.mm-brandpreview__bar {
+  display: flex; align-items: center; gap: var(--mm-space-3);
+  padding: var(--mm-space-3) var(--mm-space-4);
+  background: var(--mm-bg-surface-3); border-bottom: 1px solid var(--mm-border-subtle);
+}
+.mm-brandpreview__mark {
+  width: 32px; height: 32px; border-radius: var(--mm-radius-md);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--preview-brand, var(--mm-primary)); color: #fff;
+  font-weight: var(--mm-weight-bold); font-size: var(--mm-text-xs);
+}
+.mm-brandpreview__name { display: block; font-weight: var(--mm-weight-semibold); font-size: var(--mm-text-sm); }
+.mm-brandpreview__sub { display: block; font-size: var(--mm-text-2xs); color: var(--mm-text-tertiary); text-transform: uppercase; letter-spacing: var(--mm-tracking-caps); }
+.mm-brandpreview__body { display: flex; align-items: center; gap: var(--mm-space-3); padding: var(--mm-space-4); flex-wrap: wrap; }
+.mm-brandpreview__btn {
+  padding: var(--mm-space-2) var(--mm-space-4); border-radius: var(--mm-radius-md);
+  background: var(--preview-brand, var(--mm-primary)); color: #fff; font-size: var(--mm-text-sm);
+  font-weight: var(--mm-weight-medium);
+}
+.mm-brandpreview__link { color: var(--preview-accent, var(--mm-accent)); font-size: var(--mm-text-sm); }
+.mm-brandpreview__pill {
+  padding: 2px var(--mm-space-3); border-radius: var(--mm-radius-pill);
+  background: var(--mm-success-soft); color: var(--mm-success); font-size: var(--mm-text-xs);
+}
+.mm-brandpreview__logo { background: var(--mm-bg-inset); padding: var(--mm-space-4); border-radius: var(--mm-radius-md); text-align: center; }
+.mm-brandpreview__logo img { max-height: 56px; max-width: 100%; }
+
+/* A freshly created key, shown once. */
+.mm-code--key { font-size: var(--mm-text-base); word-break: break-all; user-select: all; }
+
+/* ---------------------------------------------------------------------------
+   Voice notes
+   The recorder is one row on a desktop and stacks on a phone, which is where
+   somebody standing in a client's office is most likely to use it.
+--------------------------------------------------------------------------- */
+.mm-voicerec { display: flex; flex-direction: column; gap: var(--mm-space-3); }
+.mm-voicerec__controls { display: flex; align-items: center; gap: var(--mm-space-3); flex-wrap: wrap; }
+.mm-voicerec__timer {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--mm-text-lg);
+  font-weight: 600;
+  min-width: 3.5rem;
+  color: var(--mm-text-primary);
+}
+/* A dot rather than a fake waveform: it reports that recording is live, which
+   is true, instead of drawing levels this screen does not measure. */
+.mm-voicerec__level {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--mm-border-strong);
+  flex: 0 0 auto;
+}
+.mm-voicerec__level.is-live {
+  background: var(--mm-danger);
+  animation: mm-voicerec-pulse 1.1s ease-in-out infinite;
+}
+@keyframes mm-voicerec-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.8); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mm-voicerec__level.is-live { animation: none; }
+}
+.mm-voicerec__meta {
+  display: flex; align-items: flex-end; gap: var(--mm-space-3); flex-wrap: wrap;
+}
+.mm-voicerec__meta .mm-field { min-width: 16rem; flex: 1 1 16rem; }
+.mm-voicerec__preview { display: flex; flex-direction: column; gap: var(--mm-space-1); }
+.mm-voicerec__preview:empty { display: none; }
+
+.mm-voicenote { display: flex; flex-direction: column; gap: var(--mm-space-1); min-width: 0; }
+/* A player narrower than about 15rem loses its scrubber to Chromium's own
+   collapsing rules, which leaves a play button and nothing to seek with. */
+.mm-voicenote__player { width: 100%; min-width: 15rem; max-width: 20rem; height: 34px; }
+
+@media (max-width: 640px) {
+  .mm-voicerec__meta .mm-field { min-width: 0; flex: 1 1 100%; }
+  .mm-voicenote__player { max-width: 100%; }
 }

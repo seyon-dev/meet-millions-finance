@@ -159,6 +159,7 @@ function registerRoutes() {
   route('/messaging/inbox', () => import('./screens/messaging/inbox.js'));
   route('/automation', () => import('./screens/automation.js'));
   route('/leads', () => import('./screens/leads.js'));
+  route('/voice-notes', () => import('./screens/voice-notes.js'));
   route('/support', () => import('./screens/support/list.js'));
   route('/support/:id', () => import('./screens/support/detail.js'));
   route('/calendar', () => import('./screens/calendar.js'));

@@ -109,6 +109,7 @@ const NAV = {
       { key: 'inbox',        label: 'Chat Inbox',   path: '/messaging/inbox',  icon: 'message-circle', permission: 'messaging.view', feature: 'whatsapp_integration', badge: 'unreadChats' },
       { key: 'automation',   label: 'Automation',   path: '/automation',       icon: 'zap',            permission: 'automation.manage', feature: 'email_automation' },
       { key: 'leads',        label: 'Leads',        path: '/leads',            icon: 'magnet',         permission: 'leads.view', feature: 'meta_lead_ads', badge: 'newLeads' },
+      { key: 'voice_notes',  label: 'Voice Notes',  path: '/voice-notes',      icon: 'mic',            permission: 'voicenotes.create', feature: 'voice_notes' },
       { key: 'calendar',     label: 'Calendar',     path: '/calendar',         icon: 'calendar',       permission: 'tasks.view', feature: 'calendar_sync' },
       { key: 'support',      label: 'Support',      path: '/support',          icon: 'life-buoy',      permission: 'support.view', badge: 'openTickets' },
     ],
@@ -192,7 +193,19 @@ export async function navigationFor(ctx, entitlementsPayloadMaybe = null) {
     : await getEntitlements(ctx);
 
   const role = primaryRole(ctx.roleKeys ?? []);
-  const groupKeys = GROUP_ORDER[role] ?? GROUP_ORDER.client;
+
+  /**
+   * A platform Super Admin belongs to no organisation, and every screen outside
+   * the platform group works inside one. Offering them Clients, Verification or
+   * Tax would be offering a screen that cannot load — permissions say yes, the
+   * absence of a tenant says no, and the tenant is what decides here.
+   *
+   * A Super Admin who does belong to an organisation, or who is impersonating
+   * inside one, keeps the full navigation.
+   */
+  const groupKeys = !ctx.tenantId
+    ? ['platform']
+    : (GROUP_ORDER[role] ?? GROUP_ORDER.client);
   const byKey = new Map();
 
   const groups = [];
