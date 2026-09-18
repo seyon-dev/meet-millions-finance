@@ -1,0 +1,16 @@
+{
+  "name": "Meet Millions Finance CRM",
+  "short_name": "Meet Millions",
+  "description": "Document collection, verification, GST and TDS computation, reporting and client billing for Indian accounting firms.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0B1120",
+  "theme_color": "#0B1120",
+  "lang": "en-IN",
+  "categories": ["business", "finance", "productivity"],
+  "icons": [
+    { "src": "/assets/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

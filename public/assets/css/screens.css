@@ -292,3 +292,49 @@
 .mm-wizard__step { display: flex; align-items: center; gap: var(--mm-space-3); padding: var(--mm-space-2) var(--mm-space-3); border-radius: var(--mm-radius-md); font-size: var(--mm-text-sm); color: var(--mm-text-tertiary); white-space: nowrap; }
 .mm-wizard__step.is-current { background: var(--mm-bg-selected); color: var(--mm-text-primary); font-weight: var(--mm-weight-semibold); }
 .mm-wizard__step.is-done { color: var(--mm-success-text); }
+
+/* --------------------------------------------------------------------------
+   CHART TONES AND PARTS
+   The chart module draws inline SVG so it inherits the theme; these give each
+   series a semantic colour and supply the few parts the base rules do not.
+   -------------------------------------------------------------------------- */
+.mm-chart__baseline { stroke: var(--mm-chart-grid); stroke-width: 1; shape-rendering: crispEdges; }
+.mm-chart__label { fill: var(--mm-text-tertiary); font-size: 10px; }
+
+.mm-chart__bar { fill: var(--mm-brand); }
+.mm-chart__bar.is-highlight { fill: var(--mm-accent); }
+.mm-chart__line { stroke: var(--mm-brand); }
+.mm-chart__area { fill: var(--mm-brand); }
+.mm-chart__dot { fill: var(--mm-brand); }
+
+.mm-chart__arc--brand   { stroke: var(--mm-brand); }
+.mm-chart__arc--accent  { stroke: var(--mm-accent); }
+.mm-chart__arc--success { stroke: var(--mm-success); }
+.mm-chart__arc--warning { stroke: var(--mm-warning); }
+.mm-chart__arc--danger  { stroke: var(--mm-danger); }
+.mm-chart__arc--violet  { stroke: var(--mm-ai); }
+.mm-chart__arc--neutral { stroke: var(--mm-border-strong); }
+
+.mm-legend__swatch--brand   { background: var(--mm-brand); }
+.mm-legend__swatch--accent  { background: var(--mm-accent); }
+.mm-legend__swatch--success { background: var(--mm-success); }
+.mm-legend__swatch--warning { background: var(--mm-warning); }
+.mm-legend__swatch--danger  { background: var(--mm-danger); }
+.mm-legend__swatch--violet  { background: var(--mm-ai); }
+.mm-legend__swatch--neutral { background: var(--mm-border-strong); }
+.mm-legend__label { color: var(--mm-text-secondary); }
+
+.mm-rankbar__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mm-text-secondary); }
+.mm-rankbar__fill { background: var(--mm-brand); }
+.mm-rankbar__fill--success { background: var(--mm-success); }
+.mm-rankbar__fill--warning { background: var(--mm-warning); }
+.mm-rankbar__fill--danger  { background: var(--mm-danger); }
+.mm-rankbar__fill--accent  { background: var(--mm-accent); }
+
+/* Sparkline — sized by its container, so it fits inside a stat tile. */
+.mm-spark { width: 100%; height: 28px; display: block; overflow: visible; }
+.mm-spark__line { fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.mm-spark--brand   .mm-spark__line { stroke: var(--mm-brand); }
+.mm-spark--success .mm-spark__line { stroke: var(--mm-success); }
+.mm-spark--danger  .mm-spark__line { stroke: var(--mm-danger); }
+.mm-spark--warning .mm-spark__line { stroke: var(--mm-warning); }

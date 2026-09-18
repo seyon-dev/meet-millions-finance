@@ -105,8 +105,20 @@ router.get('/:id', async (ctx) => {
     ? await scope.first('filing_periods', { id: query.filing_period_id })
     : null;
 
+  // The list query joins these names in SQL; this read fetches the rows, so
+  // the same fields are filled in here rather than left null on a detail.
+  const raisedBy = query.raised_by
+    ? await scope.first('users', { id: query.raised_by }, 'id, full_name')
+    : null;
+
   return ok({
-    query: toQuery(query),
+    query: {
+      ...toQuery(query),
+      clientName: client?.display_name ?? null,
+      clientCode: client?.client_code ?? null,
+      documentTitle: document?.title ?? null,
+      raisedByName: raisedBy?.full_name ?? null,
+    },
     replies: replies.map(r => ({ ...r, attachments: safeJson(r.attachments_json, []) })),
     client,
     document,

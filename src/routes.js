@@ -26,6 +26,7 @@ import { dashboardsRouter } from './modules/dashboards.js';
 import { filesRouter } from './modules/files.js';
 import { webhooksRouter } from './modules/webhooks.js';
 import { auditRouter } from './modules/audit.js';
+import { activityRouter } from './modules/activity.js';
 import { notificationsRouter } from './modules/notifications.js';
 import { searchRouter } from './modules/search.js';
 import { integrationsRouter } from './modules/integrations.js';
@@ -58,6 +59,7 @@ export function registerRoutes(router) {
   router.mount('/api/settings', settingsRouter);
   router.mount('/api/dashboard', dashboardsRouter);
   router.mount('/api/audit', auditRouter);
+  router.mount('/api/activity', activityRouter);
   router.mount('/api/notifications', notificationsRouter);
   router.mount('/api/search', searchRouter);
   router.mount('/api/integrations', integrationsRouter);

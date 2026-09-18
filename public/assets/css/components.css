@@ -542,8 +542,10 @@
 /* --------------------------------------------------------------------------
    PROGRESS
    -------------------------------------------------------------------------- */
-.mm-progress { height: 6px; border-radius: var(--mm-radius-pill); background: var(--mm-bg-inset); overflow: hidden; }
-.mm-progress__bar { height: 100%; border-radius: var(--mm-radius-pill); background: var(--mm-gradient-brand); transition: width var(--mm-dur-slow) var(--mm-ease-out); }
+/* Explicitly block: these are written as <span> at most call sites, and an
+   inline element ignores height, which collapses the track to a hairline. */
+.mm-progress { display: block; width: 100%; height: 6px; border-radius: var(--mm-radius-pill); background: var(--mm-bg-inset); overflow: hidden; }
+.mm-progress__bar { display: block; height: 100%; min-width: 2px; border-radius: var(--mm-radius-pill); background: var(--mm-gradient-brand); transition: width var(--mm-dur-slow) var(--mm-ease-out); }
 .mm-progress--sm { height: 4px; }
 .mm-progress--lg { height: 9px; }
 .mm-progress__bar--success { background: var(--mm-success); }

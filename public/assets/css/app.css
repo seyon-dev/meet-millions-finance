@@ -1,0 +1,270 @@
+/* ==========================================================================
+   Meet Millions Finance CRM — Application layer
+   --------------------------------------------------------------------------
+   The pieces the running application introduces on top of the design system:
+   the boot screen, the shell's column and mobile behaviour, table affordances,
+   floating menus, and a handful of utilities the screens rely on.
+
+   Kept in its own file so the four design-system sheets stay a description of
+   the system rather than a record of what one application happened to need.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   BOOT
+   Shown for the duration of the first session request, and replaced. Sized and
+   centred so the swap to the real shell does not shift the page.
+   -------------------------------------------------------------------------- */
+.mm-boot {
+  min-height: 100dvh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--mm-space-4);
+  text-align: center;
+  padding: var(--mm-space-6);
+}
+.mm-boot__mark {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--mm-radius-lg);
+  background: linear-gradient(140deg, var(--mm-brand), var(--mm-accent));
+  color: #fff;
+  font-family: var(--mm-font-display);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: var(--mm-shadow-glow);
+  animation: mm-boot-pulse 1.6s var(--mm-ease-in-out) infinite;
+}
+.mm-boot__text { color: var(--mm-text-tertiary); font-size: var(--mm-text-sm); }
+
+@keyframes mm-boot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.72; transform: scale(0.96); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mm-boot__mark { animation: none; }
+}
+
+/* --------------------------------------------------------------------------
+   SHELL EXTRAS
+   The sidebar, topbar, rail and mobile drawer are all in layout.css, driven by
+   data-sidebar and data-drawer on the shell. Only what the running application
+   adds on top belongs here.
+   -------------------------------------------------------------------------- */
+.mm-shell__banner { padding: var(--mm-space-4) var(--mm-space-6) 0; }
+.mm-auth-outlet { min-height: 100dvh; }
+
+/* --------------------------------------------------------------------------
+   TOPBAR EXTRAS
+   -------------------------------------------------------------------------- */
+/* The hamburger only exists below the sidebar breakpoint; layout.css turns the
+   sidebar into a drawer at the same width. */
+.mm-topbar__menu { display: none; }
+@media (max-width: 1024px) { .mm-topbar__menu { display: inline-flex; } }
+.mm-topbar__user { padding: 4px; border-radius: var(--mm-radius-pill); }
+.mm-iconbtn__badge.is-urgent { background: var(--mm-danger); }
+
+/* --------------------------------------------------------------------------
+   FLOATING MENU
+   Positioned by script against its trigger, so only the surface is styled here.
+   -------------------------------------------------------------------------- */
+.mm-menu--float {
+  position: fixed;
+  z-index: var(--mm-z-menu, 60);
+  min-width: 232px;
+  padding: var(--mm-space-2);
+  background: var(--mm-bg-elevated);
+  border: 1px solid var(--mm-border);
+  border-radius: var(--mm-radius-lg);
+  box-shadow: var(--mm-shadow-lg);
+  animation: mm-menu-in var(--mm-dur-fast) var(--mm-ease-out);
+}
+@keyframes mm-menu-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mm-menu--float { animation: none; }
+}
+
+/* --------------------------------------------------------------------------
+   NOTIFICATION CENTRE
+   -------------------------------------------------------------------------- */
+.mm-notif__icon--info    { color: var(--mm-info); }
+.mm-notif__icon--success { color: var(--mm-success); }
+.mm-notif__icon--warning { color: var(--mm-warning); }
+.mm-notif__icon--danger  { color: var(--mm-danger); }
+.mm-notif.is-read { opacity: 0.62; }
+
+/* --------------------------------------------------------------------------
+   COMMAND PALETTE
+   -------------------------------------------------------------------------- */
+.mm-cmd__note {
+  padding: var(--mm-space-6) var(--mm-space-5);
+  text-align: center;
+  color: var(--mm-text-tertiary);
+  font-size: var(--mm-text-sm);
+}
+
+/* --------------------------------------------------------------------------
+   TABLES
+   -------------------------------------------------------------------------- */
+.mm-table-host { display: block; }
+.mm-table__check { width: 40px; }
+
+.mm-table__row--clickable { cursor: pointer; }
+.mm-table__row--clickable:hover > td { background: var(--mm-bg-hover); }
+.mm-table__row--clickable:focus-visible {
+  outline: 2px solid var(--mm-brand);
+  outline-offset: -2px;
+}
+
+/* A refresh dims the rows rather than replacing them with skeletons: keeping
+   the previous results on screen is less disorienting than a flash of nothing
+   when only a filter changed. */
+.mm-table-wrap.is-refreshing { opacity: 0.55; pointer-events: none; transition: opacity var(--mm-dur-fast); }
+
+.mm-align-right  { text-align: right; }
+.mm-align-center { text-align: center; }
+.mm-align-right .mm-numeric { display: inline-block; }
+
+.mm-filter { display: inline-flex; }
+
+/* --------------------------------------------------------------------------
+   MOBILE
+   -------------------------------------------------------------------------- */
+/* The table and the card list are two renderings of the same rows. Exactly
+   one of them is ever visible: the table on anything wide enough to read a
+   table, stacked cards below that. Without this both render at once, which is
+   how a five-row list becomes a fifteen-screen page. */
+.mm-card-list { display: none; }
+
+@media (max-width: 860px) {
+  .mm-table-wrap > .mm-table { display: none; }
+  .mm-card-list { display: flex; }
+}
+
+@media (max-width: 720px) {
+  /* Columns marked hideOnMobile drop out before the table becomes a card list,
+     which keeps the tablet range readable without losing the table entirely. */
+  .mm-hide-sm { display: none !important; }
+}
+
+/* --------------------------------------------------------------------------
+   UTILITIES
+   -------------------------------------------------------------------------- */
+.mm-link {
+  color: var(--mm-brand);
+  text-decoration: none;
+  font-weight: var(--mm-weight-medium);
+}
+.mm-link:hover { text-decoration: underline; }
+.mm-link:focus-visible { outline: 2px solid var(--mm-brand); outline-offset: 2px; border-radius: 2px; }
+
+.mm-block { display: block; }
+.mm-auth__legal { margin-top: var(--mm-space-5); max-width: 42ch; }
+
+/* The password meter, shared by registration, reset and the change form. */
+.mm-meter__bar {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: var(--mm-radius-pill);
+  transition: width var(--mm-dur-base) var(--mm-ease-out), background var(--mm-dur-base);
+  background: var(--mm-danger);
+}
+.mm-meter__bar[data-level="fair"]   { background: var(--mm-warning); }
+.mm-meter__bar[data-level="good"]   { background: var(--mm-info); }
+.mm-meter__bar[data-level="strong"] { background: var(--mm-success); }
+
+/* --------------------------------------------------------------------------
+   LIST ROWS
+   The compact alternative to a table, for dashboard cards and short panels
+   where column headers would be noise.
+   -------------------------------------------------------------------------- */
+.mm-list { display: flex; flex-direction: column; }
+.mm-list__row {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-3);
+  padding: var(--mm-space-3) var(--mm-space-5);
+  border-top: 1px solid var(--mm-border-subtle);
+}
+.mm-list__row:first-child { border-top: 0; }
+.mm-list__row:hover { background: var(--mm-bg-hover); }
+.mm-list__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+  text-decoration: none;
+  color: inherit;
+}
+.mm-list__main > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.mm-list__main:hover .mm-fw-medium { color: var(--mm-brand); }
+.mm-list__icon { display: inline-flex; flex-shrink: 0; }
+
+@media (max-width: 560px) {
+  .mm-list__row { flex-wrap: wrap; padding: var(--mm-space-3) var(--mm-space-4); }
+  .mm-list__main { flex-basis: 100%; }
+}
+
+/* --------------------------------------------------------------------------
+   WORKFLOW STRIP
+   The ten stages of a filing month, shown horizontally with a count on each.
+   Scrolls rather than wraps: the order is the meaning, and a wrapped sequence
+   reads as two rows of unrelated chips.
+   -------------------------------------------------------------------------- */
+.mm-steps--strip {
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  padding: var(--mm-space-5);
+  scrollbar-width: thin;
+}
+.mm-steps--strip .mm-step {
+  flex: 1 0 116px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--mm-space-2);
+  position: relative;
+  text-align: center;
+  padding: 0 var(--mm-space-2);
+}
+.mm-steps--strip .mm-step__marker {
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--mm-border);
+  background: var(--mm-bg-inset);
+  color: var(--mm-text-tertiary);
+  font-size: var(--mm-text-xs);
+  font-weight: var(--mm-weight-semibold);
+  position: relative; z-index: 1;
+}
+.mm-steps--strip .mm-step.is-active .mm-step__marker {
+  border-color: var(--mm-brand);
+  background: var(--mm-brand);
+  color: #fff;
+}
+.mm-steps--strip .mm-step__label {
+  font-size: var(--mm-text-xs);
+  color: var(--mm-text-secondary);
+  line-height: 1.3;
+}
+.mm-steps--strip .mm-step__count {
+  font-size: var(--mm-text-sm);
+  font-weight: var(--mm-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+.mm-steps--strip .mm-step__line {
+  position: absolute;
+  top: 14px; left: 50%; right: -50%;
+  height: 1px;
+  background: var(--mm-border-subtle);
+}
+.mm-steps--strip .mm-step:last-child .mm-step__line { display: none; }

@@ -85,7 +85,10 @@
   text-align: left; transition: all var(--mm-dur-fast) var(--mm-ease-out);
 }
 .mm-scope-switch:hover { border-color: var(--mm-border-strong); background: var(--mm-bg-surface-3); }
-.mm-scope-switch__main { flex: 1 1 auto; min-width: 0; }
+/* A column, so the two lines stack. As inline spans they shared a line and
+   the ellipsis never applied — which put the name and the GSTIN on top of
+   each other for any organisation with a long name. */
+.mm-scope-switch__main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .mm-scope-switch__name { font-size: var(--mm-text-xs); font-weight: var(--mm-weight-semibold); color: var(--mm-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mm-scope-switch__meta { font-size: 10px; color: var(--mm-text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

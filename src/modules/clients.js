@@ -107,6 +107,25 @@ async function enrichClients(scope, rows) {
         AND status IN ('issued','sent','partially_paid','overdue')
       GROUP BY client_id`, [scope.tenantId, ...ids]);
 
+  // The registration details and the people looking after each client — two
+  // more queries for the whole page, not two per row.
+  const companies = await scope.raw(
+    `SELECT id, gstin, pan, state_code, name FROM companies
+      WHERE tenant_id = ? AND id IN (${rows.map(() => '?').join(',')})`,
+    [scope.tenantId, ...rows.map(r => r.company_id).filter(Boolean)]);
+
+  const staffIds = [...new Set(rows.flatMap(r =>
+    [r.assigned_executive_id, r.assigned_manager_id]).filter(Boolean))];
+  const staff = staffIds.length
+    ? await scope.raw(
+        `SELECT id, full_name FROM users
+          WHERE tenant_id = ? AND id IN (${staffIds.map(() => '?').join(',')})`,
+        [scope.tenantId, ...staffIds])
+    : [];
+
+  const companyById = new Map(companies.map(c => [c.id, c]));
+  const staffById = new Map(staff.map(u => [u.id, u.full_name]));
+
   const latestByClient = new Map();
   for (const p of periods) if (!latestByClient.has(p.client_id)) latestByClient.set(p.client_id, p);
   const queriesByClient = new Map(queries.map(q => [q.client_id, Number(q.open_queries)]));
@@ -114,6 +133,17 @@ async function enrichClients(scope, rows) {
 
   return rows.map(row => ({
     ...toClient(row),
+    company: companyById.get(row.company_id)
+      ? {
+          id: row.company_id,
+          name: companyById.get(row.company_id).name,
+          gstin: companyById.get(row.company_id).gstin,
+          pan: companyById.get(row.company_id).pan,
+          stateCode: companyById.get(row.company_id).state_code,
+        }
+      : null,
+    assignedExecutiveName: staffById.get(row.assigned_executive_id) ?? null,
+    assignedManagerName: staffById.get(row.assigned_manager_id) ?? null,
     currentPeriod: latestByClient.get(row.id) ? {
       periodKey: latestByClient.get(row.id).period_key,
       status: latestByClient.get(row.id).status,

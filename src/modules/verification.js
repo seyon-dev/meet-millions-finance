@@ -23,7 +23,7 @@ import {
 } from '../services/workflow.js';
 import { dispatchNotification } from '../services/notifications.js';
 import { queueCloudSync } from '../services/cloud-sync.js';
-import { toDocument, getVisibleDocument } from './documents.js';
+import { toDocument, withRelated, getVisibleDocument } from './documents.js';
 
 const router = createRouter();
 
@@ -554,7 +554,7 @@ router.get('/:id', async (ctx) => {
   const index = siblings.findIndex(s => s.id === document.id);
 
   return ok({
-    document: toDocument(document),
+    document: withRelated(document, { client, type }),
     client,
     type,
     version,

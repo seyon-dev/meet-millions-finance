@@ -116,7 +116,7 @@ router.get('/:id', async (ctx) => {
     [ctx.tenantId, document.id]);
 
   return ok({
-    document: toDocument(document),
+    document: withRelated(document, { client, type }),
     type,
     client,
     versions,
@@ -826,6 +826,25 @@ async function currentPeriodFor(scope, client) {
     `SELECT * FROM filing_periods
       WHERE tenant_id = ? AND client_id = ? AND status NOT IN ('archived','filed')
       ORDER BY period_key DESC LIMIT 1`, [scope.tenantId, client.id]);
+}
+
+/**
+ * Fill in the display names a detail read does not carry.
+ *
+ * The list queries join the client and the document type in SQL; a detail read
+ * fetches them as their own rows instead. Without this the same field is a
+ * name in a list and null in a detail, which a screen discovers as a dash
+ * where a name should be.
+ */
+export function withRelated(row, { client = null, type = null } = {}) {
+  return {
+    ...toDocument(row),
+    clientName: row.client_name ?? client?.display_name ?? null,
+    clientCode: row.client_code ?? client?.client_code ?? null,
+    typeName: row.type_name ?? type?.name ?? null,
+    typeCategory: row.type_category ?? type?.category ?? null,
+    typeKey: row.type_key ?? type?.key ?? null,
+  };
 }
 
 export function toDocument(row) {

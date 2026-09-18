@@ -41,6 +41,106 @@ router.get('/', async (ctx) => {
   return ok({ role, generatedAt: nowIso(), ...dashboard }, { ctx });
 }, { auth: true });
 
+/**
+ * The live counters the sidebar shows beside its items.
+ *
+ * The navigation names a counter key per item; this resolves those keys to
+ * numbers. Kept out of /dashboard because the badges are polled on a timer and
+ * a dashboard is not — and every count here respects the caller's own
+ * visibility, so an executive's "pending verification" is their queue, not the
+ * whole firm's.
+ */
+router.get('/badges', async (ctx) => {
+  const scope = scopeFor(ctx);
+  const db = new Db(ctx.env.DB);
+  const badges = {};
+
+  // The same narrowing the verification queue itself applies: an executive
+  // without the broad client permission is shown their own queue, so the badge
+  // matches the screen it points at.
+  const ownQueueOnly = !ctx.has('clients.view') && ctx.has('clients.view.assigned');
+
+  if (ctx.has('documents.verify')) {
+    const row = ownQueueOnly
+      ? await scope.rawOne(
+          `SELECT COUNT(*) AS n FROM documents d
+             LEFT JOIN clients c ON c.id = d.client_id
+            WHERE d.tenant_id = ?1 AND d.deleted_at IS NULL
+              AND d.status IN ('submitted','under_review')
+              AND (d.assigned_to = ?2 OR c.assigned_executive_id = ?2)`,
+          [ctx.tenantId, ctx.userId])
+      : await scope.rawOne(
+          `SELECT COUNT(*) AS n FROM documents
+            WHERE tenant_id = ?1 AND deleted_at IS NULL
+              AND status IN ('submitted','under_review')`, [ctx.tenantId]);
+    badges.pendingVerification = Number(row?.n) || 0;
+  }
+
+  if (ctx.has('tasks.view')) {
+    const row = await scope.rawOne(
+      `SELECT COUNT(*) AS n FROM tasks
+        WHERE tenant_id = ?1 AND assigned_to = ?2
+          AND status IN ('todo','in_progress','blocked','review')`, [ctx.tenantId, ctx.userId]);
+    badges.openTasks = Number(row?.n) || 0;
+  }
+
+  if (ctx.has('approvals.view')) {
+    const row = await scope.rawOne(
+      `SELECT COUNT(*) AS n FROM approvals WHERE tenant_id = ? AND status = 'pending'`,
+      [ctx.tenantId]);
+    badges.pendingApprovals = Number(row?.n) || 0;
+  }
+
+  if (ctx.has('queries.view') || ctx.has('queries.view.own')) {
+    if (ctx.isClient) {
+      const ids = await loadClientIdsForUser(db, ctx.userId, ctx.tenantId);
+      if (ids.length) {
+        const row = await scope.rawOne(
+          `SELECT COUNT(*) AS n FROM queries
+            WHERE tenant_id = ? AND client_id IN (${ids.map(() => '?').join(',')})
+              AND status IN ('open','awaiting_client')`, [ctx.tenantId, ...ids]);
+        badges.openQueries = Number(row?.n) || 0;
+      } else {
+        badges.openQueries = 0;
+      }
+    } else {
+      const row = await scope.rawOne(
+        `SELECT COUNT(*) AS n FROM queries WHERE tenant_id = ?
+           AND status IN ('open','client_responded')`, [ctx.tenantId]);
+      badges.openQueries = Number(row?.n) || 0;
+    }
+  }
+
+  if (ctx.has('messaging.view')) {
+    const row = await scope.rawOne(
+      `SELECT COUNT(*) AS n FROM chat_threads WHERE tenant_id = ? AND unread_count > 0`,
+      [ctx.tenantId]);
+    badges.unreadChats = Number(row?.n) || 0;
+  }
+
+  if (ctx.has('leads.view')) {
+    const row = await scope.rawOne(
+      `SELECT COUNT(*) AS n FROM leads WHERE tenant_id = ? AND status = 'new'`, [ctx.tenantId]);
+    badges.newLeads = Number(row?.n) || 0;
+  }
+
+  if (ctx.has('support.view')) {
+    const row = await scope.rawOne(
+      `SELECT COUNT(*) AS n FROM support_tickets WHERE tenant_id = ?
+         AND status IN ('open','in_progress','waiting_internal','reopened')`, [ctx.tenantId]);
+    badges.openTickets = Number(row?.n) || 0;
+  }
+
+  if (ctx.has('ai.ocr')) {
+    const row = await scope.rawOne(
+      `SELECT COUNT(*) AS n FROM ocr_extractions WHERE tenant_id = ?
+         AND status = 'done' AND review_status = 'pending'`, [ctx.tenantId]);
+    badges.ocrPending = Number(row?.n) || 0;
+  }
+
+  return ok({ badges, generatedAt: nowIso() }, { ctx });
+}, { auth: true });
+
 /** A specific dashboard by name, for the role switcher in the UI. */
 router.get('/:role', async (ctx) => {
   const wanted = ctx.params.role;

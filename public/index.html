@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en-IN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0B1120" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F6F8FC" media="(prefers-color-scheme: light)">
+<meta name="description" content="Meet Millions Finance CRM — document collection, verification, GST and TDS computation, reporting and client billing for Indian accounting firms.">
+<meta name="robots" content="noindex">
+
+<title>Meet Millions Finance CRM</title>
+
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+
+<!-- Fonts are self-hosted preconnect targets only; the stack falls back to the
+     system UI font, so a slow or blocked font never delays first paint. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+<link rel="stylesheet" href="/assets/css/tokens.css">
+<link rel="stylesheet" href="/assets/css/base.css">
+<link rel="stylesheet" href="/assets/css/components.css">
+<link rel="stylesheet" href="/assets/css/layout.css">
+<link rel="stylesheet" href="/assets/css/screens.css">
+<link rel="stylesheet" href="/assets/css/app.css">
+
+<script>
+  /* Applied before first paint. Reading the stored theme here rather than in
+     the module avoids the flash of the wrong palette while JavaScript loads. */
+  (function () {
+    try {
+      var stored = localStorage.getItem('mm.theme');
+      if (stored) document.documentElement.setAttribute('data-theme', stored);
+      else document.documentElement.removeAttribute('data-theme');
+    } catch (e) { /* private mode: the media query decides */ }
+  })();
+</script>
+</head>
+
+<body>
+<a class="mm-skip-link" href="#mm-main">Skip to main content</a>
+
+<!-- The ambient background: a fixed mesh and two slow glows. Purely
+     decorative, and suppressed entirely under prefers-reduced-motion. -->
+<div class="mm-ambient" aria-hidden="true">
+  <span class="mm-ambient__glow mm-ambient__glow--a"></span>
+  <span class="mm-ambient__glow mm-ambient__glow--b"></span>
+</div>
+
+<div id="mm-app">
+  <!-- Replaced on boot. Visible only while the first request is in flight, so
+       the page is never blank and never flashes an empty shell. -->
+  <div class="mm-boot" role="status" aria-live="polite">
+    <div class="mm-boot__mark" aria-hidden="true">MM</div>
+    <p class="mm-boot__text">Loading your workspace…</p>
+    <noscript>
+      <p class="mm-boot__text">
+        This application needs JavaScript. Please enable it and reload the page.
+      </p>
+    </noscript>
+  </div>
+</div>
+
+<script type="module" src="/assets/js/app.js"></script>
+</body>
+</html>

@@ -190,3 +190,29 @@ code, pre, kbd, samp { font-family: var(--mm-font-mono); font-size: 0.92em; }
   .mm-card { break-inside: avoid; border: 1px solid #ddd; box-shadow: none; }
   a[href]::after { content: ""; }
 }
+
+/* --------------------------------------------------------------------------
+   Two utilities the shell needs, kept here rather than in a screen file
+   because both are global behaviours rather than one screen's styling.
+   -------------------------------------------------------------------------- */
+
+/* Applied to <body> while a modal or drawer is open. Position is preserved by
+   the overlay itself, so this only needs to stop the page behind scrolling. */
+.mm-scroll-lock { overflow: hidden; }
+
+/* A stat tile that is also a link. The tile keeps its own styling; this only
+   removes the link decoration and gives it the same focus ring as a card. */
+.mm-stat-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border-radius: var(--mm-radius-lg);
+}
+.mm-stat-link:focus-visible {
+  outline: 2px solid var(--mm-brand);
+  outline-offset: 2px;
+}
+.mm-stat-link:hover .mm-stat {
+  border-color: var(--mm-border-strong);
+  transform: translateY(-1px);
+}
