@@ -17,6 +17,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { poolConfigFromEnv } from '../src/db/mysql.js';
 import { planMigration } from '../src/db/migration-plan.js';
+import { parseExpectedSchema, compareSchema, describeDifferences } from '../src/db/schema-verify.js';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const BASELINE = resolve(root, 'database/mysql-schema.sql');
@@ -27,6 +28,37 @@ const SOURCE_MIGRATIONS = resolve(root, 'database/migrations');
 const sqlFiles = (dir) => (existsSync(dir)
   ? readdirSync(dir).filter(f => f.endsWith('.sql')).sort()
   : []);
+
+
+/**
+ * Read the actual structure out of information_schema.
+ *
+ * Two queries rather than one per table: a CRM schema is 116 tables and 1,800
+ * columns, and a query per table would be slow enough to notice at startup.
+ */
+async function readActualSchema(conn, database) {
+  const actual = new Map();
+
+  const [columns] = await conn.query(
+    `SELECT LOWER(table_name) AS t, LOWER(column_name) AS c
+       FROM information_schema.columns WHERE table_schema = ?`, [database]);
+
+  for (const row of columns) {
+    if (!actual.has(row.t)) actual.set(row.t, { columns: new Set(), indexes: new Set() });
+    actual.get(row.t).columns.add(row.c);
+  }
+
+  const [indexes] = await conn.query(
+    `SELECT LOWER(table_name) AS t, LOWER(index_name) AS i
+       FROM information_schema.statistics WHERE table_schema = ?`, [database]);
+
+  for (const row of indexes) {
+    if (!actual.has(row.t)) actual.set(row.t, { columns: new Set(), indexes: new Set() });
+    actual.get(row.t).indexes.add(row.i);
+  }
+
+  return actual;
+}
 
 /**
  * @param {object} options
@@ -75,14 +107,29 @@ export async function runMigration({ dryRun = false, log = () => {} } = {}) {
       'SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = ?',
       [config.database]);
 
+    const appliedNames = new Set(recorded.map(r => r.name));
+    // schema_migrations itself is not application data.
+    const tableCount = Math.max(0, Number(tableRows[0]?.n ?? 0) - 1);
+
+    // Only when it could matter: a database with tables but no record is
+    // either the phpMyAdmin-first workflow or something unexplained, and the
+    // difference is exactly what this establishes.
+    let verification = null;
+    if (!appliedNames.has(BASELINE_NAME) && tableCount > 0) {
+      log('Existing tables with no migration record — verifying against the baseline…');
+      verification = compareSchema(
+        parseExpectedSchema(baselineSql),
+        await readActualSchema(conn, config.database));
+    }
+
     const plan = planMigration({
-      applied: new Set(recorded.map(r => r.name)),
-      // schema_migrations itself is not application data.
-      tableCount: Math.max(0, Number(tableRows[0]?.n ?? 0) - 1),
+      applied: appliedNames,
+      tableCount,
       covered,
       sourceMigrations: sqlFiles(SOURCE_MIGRATIONS),
       incrementals: sqlFiles(INCREMENTAL_DIR),
       baselineName: BASELINE_NAME,
+      verification,
     });
 
     if (plan.action === 'refuse' && plan.reason === 'migrations_without_a_route') {
@@ -94,12 +141,51 @@ export async function runMigration({ dryRun = false, log = () => {} } = {}) {
       };
     }
 
-    if (plan.action === 'refuse' && plan.reason === 'database_not_empty') {
+    if (plan.action === 'refuse' && plan.reason === 'unverified_existing_schema') {
       return {
         ok: false, applied, plan,
-        message: `${config.database} already contains ${plan.tableCount} table(s) with no record `
-          + 'of this schema. Refusing to apply it over an existing database. Point DB_NAME at an '
-          + 'empty database, or drop its tables if it holds nothing.',
+        message: `${config.database} contains ${plan.tableCount} table(s) with no migration `
+          + 'record, and the schema could not be verified against the baseline. Nothing was changed.',
+      };
+    }
+
+    if (plan.action === 'refuse' && plan.reason === 'schema_does_not_match_baseline') {
+      return {
+        ok: false, applied, plan,
+        message: `${config.database} contains ${plan.tableCount} table(s), but its structure does `
+          + `not match database/mysql-schema.sql: ${plan.verification.summary}.\n\n`
+          + describeDifferences(plan.verification)
+          + '\n\n  Nothing was changed. This database is not the current baseline — it may be an '
+          + 'older one, an import that did not finish, or a different application entirely.',
+      };
+    }
+
+    if (plan.action === 'adopt') {
+      // No DDL. The schema is already correct and verified; all that is
+      // missing is the record saying so.
+      log(`Verified: ${plan.verification.summary}`);
+      log('Adopting the existing schema — recording it as applied without re-running it.');
+
+      for (const name of plan.record) {
+        await conn.query(
+          'INSERT IGNORE INTO schema_migrations (name, applied_at) VALUES (?, NOW())', [name]);
+        applied.push(name);
+      }
+
+      // A database imported from an older baseline may still owe incremental
+      // migrations, so those run now rather than waiting for a restart.
+      for (const file of plan.pending) {
+        log(`Applying ${file}…`);
+        await conn.query(readFileSync(join(INCREMENTAL_DIR, file), 'utf8'));
+        await conn.query('INSERT INTO schema_migrations (name, applied_at) VALUES (?, NOW())', [file]);
+        applied.push(file);
+      }
+
+      return {
+        ok: true, applied, plan,
+        message: `Adopted the existing ${plan.tableCount}-table schema `
+          + `(${plan.record.length} migration(s) recorded`
+          + `${plan.pending.length ? `, ${plan.pending.length} applied` : ''}).`,
       };
     }
 

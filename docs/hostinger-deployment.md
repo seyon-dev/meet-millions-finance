@@ -242,16 +242,33 @@ Check all → With selected: Drop**. Then import the file again. Dropping the
 tables of a half-created database loses nothing, because nothing has used it
 yet — do not do this to a database that has been in service.
 
-This is the surest option for the first load. The cost is that you repeat it
-whenever a future release adds tables — and, because phpMyAdmin does not write
-the record that `npm run migrate` keeps, you should then **also** run option A
-or B so the two agree.
+This is the surest option for the first load.
+
+**Then turn on `AUTO_MIGRATE=true`.** phpMyAdmin creates the tables but not the
+record of which migrations they represent. On the next start the application
+notices tables with no record, **verifies the database against
+`database/mysql-schema.sql` — every table, every column, every index by name —**
+and, if it matches, writes the record without re-running any of the DDL. It
+says so in the log:
+
+```
+  migrate    Existing tables with no migration record — verifying against the baseline…
+  migrate    Verified: Matches the baseline: 116 tables, 167 indexes.
+  migrate    Adopting the existing schema — recording it as applied without re-running it.
+```
+
+From then on every future release applies only what is new.
+
+If the database does **not** match, it refuses to start and names what is
+missing — a table, a column, an index. It never guesses from the table count,
+because a truncated import, an older baseline or an unrelated database of a
+similar size would all pass that test.
 
 ### Which to choose
 
 | | |
 | --- | --- |
-| **First deployment, want it certain** | **Option C**, then turn on **B** for later releases |
+| **First deployment, want it certain** | **Option C**, then set `AUTO_MIGRATE=true` — it adopts the imported schema and handles every release after |
 | **Want it automatic from now on** | **Option A**, falling back to **B** if the build cannot reach MySQL |
 | **No build access and no shell** | **Option B** |
 

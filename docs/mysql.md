@@ -138,6 +138,33 @@ npm run migrate:check
 Reports what it would do without changing anything. If the credentials are
 wrong it says so.
 
+## Adopting a database somebody imported by hand
+
+Managed hosting often has no shell, so the only way to create the tables is to
+import `database/mysql-schema.sql` through phpMyAdmin. That leaves the schema
+correct and complete with nothing recording which migrations it represents.
+
+`AUTO_MIGRATE=true` handles it. Finding tables but no record, it reads the
+expected structure out of the baseline file — 116 tables, 1,808 columns, 167
+indexes, by name — reads the actual structure out of `information_schema`, and
+compares them. If everything expected is present it records the baseline and
+every migration folded into it, and runs no DDL at all. The adoption path
+executes exactly two kinds of statement: `SELECT` against `information_schema`,
+and `INSERT IGNORE INTO schema_migrations`.
+
+If anything is missing it refuses to start and names it. It does not infer
+success from the number of tables: a truncated import, an older baseline, or an
+unrelated database of a similar size would all satisfy a count and none of them
+is this schema.
+
+A database imported from an older baseline is adopted and then brought up to
+date with whatever incremental migrations it predates, in the same pass.
+
+The comparison is by name, not by type. A column that exists with the wrong
+type is not caught — MySQL normalises types on the way in, so comparing them
+reliably means more machinery than the risk warrants for a schema that is
+generated rather than hand-edited.
+
 ## What is not verified here
 
 The schema is generated and validated against a MySQL 8 parser — all 284

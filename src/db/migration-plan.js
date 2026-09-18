@@ -18,6 +18,7 @@
  * @param {string[]}    state.sourceMigrations  everything in database/migrations
  * @param {string[]}    state.incrementals      files in database/mysql
  * @param {string}      state.baselineName
+ * @param {object|null} state.verification  structural comparison, or null
  *
  * @returns {{action: string, reason: string, applyBaseline: boolean,
  *            record: string[], pending: string[], safe: boolean}}
@@ -29,6 +30,10 @@ export function planMigration({
   sourceMigrations,
   incrementals,
   baselineName = 'mysql-schema.sql',
+  // The result of comparing this database against the baseline, from
+  // src/db/schema-verify.js. Null when nothing looked — which is itself a
+  // reason to refuse rather than to assume.
+  verification = null,
 }) {
   const hasBaseline = applied.has(baselineName);
 
@@ -52,17 +57,59 @@ export function planMigration({
     };
   }
 
-  // Applying a schema over a database somebody else's data is in could fail
-  // halfway and leave it unreasonable about. Refusing is the only safe answer.
+  // ---- A database that already has the schema, but no record of it --------
+  //
+  // This is the phpMyAdmin-first case, and it is a supported workflow rather
+  // than an accident: a managed host with no shell leaves importing the
+  // baseline by hand as the only way to create the tables. The schema is then
+  // correct and complete, and nothing has written the record of it.
+  //
+  // Re-running the DDL would fail on the first CREATE TABLE. Refusing outright
+  // — which is what this did — makes the documented workflow impossible. The
+  // right answer is to adopt it: write the record without touching the schema.
+  //
+  // Only when it has been verified, though. `verification` is the result of
+  // comparing the database against the baseline structurally; without one, or
+  // with one that does not match, there is nothing to justify the claim that
+  // this database is the baseline.
   if (!hasBaseline && tableCount > 0) {
+    if (!verification) {
+      return {
+        action: 'refuse',
+        reason: 'unverified_existing_schema',
+        tableCount,
+        applyBaseline: false,
+        record: [],
+        pending: [],
+        safe: false,
+      };
+    }
+
+    if (!verification.matches) {
+      return {
+        action: 'refuse',
+        reason: 'schema_does_not_match_baseline',
+        tableCount,
+        verification,
+        applyBaseline: false,
+        record: [],
+        pending: [],
+        safe: false,
+      };
+    }
+
+    // Verified. Record the baseline and everything folded into it, then carry
+    // on to any incremental migrations that are also pending — a database
+    // imported from an older baseline still needs those.
     return {
-      action: 'refuse',
-      reason: 'database_not_empty',
+      action: 'adopt',
+      reason: 'existing_schema_matches_baseline',
       tableCount,
+      verification,
       applyBaseline: false,
-      record: [],
-      pending: [],
-      safe: false,
+      record: [baselineName, ...covered],
+      pending: incrementals.filter(f => !applied.has(f)),
+      safe: true,
     };
   }
 

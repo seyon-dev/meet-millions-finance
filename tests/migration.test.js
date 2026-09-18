@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { planMigration } from '../src/db/migration-plan.js';
+import { parseExpectedSchema, compareSchema, describeDifferences } from '../src/db/schema-verify.js';
 
 /**
  * What a migration run decides to do.
@@ -126,10 +127,15 @@ describe('Migration planning', () => {
 
   // -- Not writing over somebody's data -------------------------------------
 
-  test('a database with tables but no record is refused', () => {
+  test('a database with tables and no record is never written over', () => {
+    // It used to be refused outright as "database_not_empty". That made the
+    // documented phpMyAdmin-first workflow impossible, so it is now refused
+    // only until the schema has been verified — see the adoption tests below.
+    // What has not changed, and must not: the baseline DDL is never run over
+    // a database that already has tables.
     const p = plan({ applied: new Set(), tableCount: 40 });
     assert.equal(p.action, 'refuse');
-    assert.equal(p.reason, 'database_not_empty');
+    assert.equal(p.reason, 'unverified_existing_schema');
     assert.equal(p.applyBaseline, false, 'nothing is applied');
     assert.equal(p.safe, false);
   });
@@ -138,6 +144,193 @@ describe('Migration planning', () => {
     // The runner subtracts it before asking; this is the boundary that matters.
     const p = plan({ applied: new Set(), tableCount: 0 });
     assert.equal(p.action, 'apply');
+  });
+
+  // -- Adopting a database that was imported by hand ------------------------
+  //
+  // The supported workflow on managed hosting with no shell: create an empty
+  // database, import database/mysql-schema.sql through phpMyAdmin, start the
+  // application. The schema is then correct and complete with nothing to say
+  // so. Adoption writes that record without re-running any DDL — but only
+  // after establishing that the database really is the baseline.
+
+  const schemaOf = (tables) => new Map(tables.map(([name, columns, indexes]) =>
+    [name, { columns: new Set(columns), indexes: new Set(indexes ?? []) }]));
+
+  const EXPECTED = schemaOf([
+    ['clients', ['id', 'tenant_id', 'display_name'], ['idx_clients_tenant']],
+    ['documents', ['id', 'tenant_id', 'title'], ['idx_documents_tenant']],
+  ]);
+
+  // B — imported, no record, matches
+  test('B: an imported database that matches the baseline is adopted, not re-run', () => {
+    const verification = compareSchema(EXPECTED, schemaOf([
+      ['clients', ['id', 'tenant_id', 'display_name'], ['idx_clients_tenant']],
+      ['documents', ['id', 'tenant_id', 'title'], ['idx_documents_tenant']],
+      ['schema_migrations', ['name', 'applied_at'], []],
+    ]));
+    assert.equal(verification.matches, true, verification.summary);
+
+    const p = plan({ tableCount: 116, verification });
+    assert.equal(p.action, 'adopt');
+    assert.equal(p.applyBaseline, false, 'the DDL must not run again');
+    assert.deepEqual(p.record, [BASE, '0001_a.sql', '0002_b.sql'],
+      'the baseline and every migration in it are recorded');
+    assert.equal(p.safe, true);
+  });
+
+  // C — imported, already recorded
+  test('C: a database that has already been adopted changes nothing', () => {
+    const p = plan({ applied: new Set([BASE, ...covered]), tableCount: 116 });
+    assert.equal(p.action, 'up_to_date');
+    assert.deepEqual(p.pending, []);
+  });
+
+  // D — partial import
+  test('D: a partially imported database is refused', () => {
+    const verification = compareSchema(EXPECTED, schemaOf([
+      ['clients', ['id', 'tenant_id', 'display_name'], ['idx_clients_tenant']],
+      // documents never made it
+    ]));
+    assert.equal(verification.matches, false);
+    assert.deepEqual(verification.missingTables, ['documents']);
+
+    const p = plan({ tableCount: 1, verification });
+    assert.equal(p.action, 'refuse');
+    assert.equal(p.reason, 'schema_does_not_match_baseline');
+    assert.equal(p.safe, false);
+  });
+
+  // E — missing table
+  test('E: a missing table is named, and blocks adoption', () => {
+    const verification = compareSchema(EXPECTED, schemaOf([
+      ['clients', ['id', 'tenant_id', 'display_name'], ['idx_clients_tenant']],
+    ]));
+    assert.deepEqual(verification.missingTables, ['documents']);
+    assert.match(describeDifferences(verification), /documents/);
+    assert.equal(plan({ tableCount: 100, verification }).action, 'refuse');
+  });
+
+  // F — missing index
+  test('F: a missing index is named, and blocks adoption', () => {
+    const verification = compareSchema(EXPECTED, schemaOf([
+      ['clients', ['id', 'tenant_id', 'display_name'], ['idx_clients_tenant']],
+      ['documents', ['id', 'tenant_id', 'title'], []],   // index absent
+    ]));
+    assert.equal(verification.matches, false);
+    assert.deepEqual(verification.missingIndexes, ['documents.idx_documents_tenant']);
+    assert.deepEqual(verification.missingTables, [], 'the table itself is fine');
+    assert.equal(plan({ tableCount: 116, verification }).action, 'refuse');
+  });
+
+  // G — incompatible: a column is absent
+  test('G: a missing column blocks adoption even when every table exists', () => {
+    const verification = compareSchema(EXPECTED, schemaOf([
+      ['clients', ['id', 'tenant_id'], ['idx_clients_tenant']],   // display_name gone
+      ['documents', ['id', 'tenant_id', 'title'], ['idx_documents_tenant']],
+    ]));
+    assert.equal(verification.matches, false);
+    assert.deepEqual(verification.missingColumns, ['clients.display_name']);
+    assert.equal(plan({ tableCount: 116, verification }).action, 'refuse');
+  });
+
+  test('a database with tables that was never verified is refused, not assumed', () => {
+    // The guard against the lazy version of this: table count alone proves
+    // nothing, so no verification means no adoption.
+    const p = plan({ tableCount: 116, verification: null });
+    assert.equal(p.action, 'refuse');
+    assert.equal(p.reason, 'unverified_existing_schema');
+  });
+
+  // H — a new migration after adoption
+  test('H: after adoption, a later migration runs exactly once', () => {
+    // Adoption records the baseline, then 0013 arrives.
+    const afterAdoption = new Set([BASE, ...covered]);
+    const first = plan({
+      applied: afterAdoption, tableCount: 116,
+      sourceMigrations: [...covered, '0013_new.sql'],
+      incrementals: ['0013_new.sql'],
+    });
+    assert.equal(first.action, 'apply');
+    assert.equal(first.applyBaseline, false, 'the baseline is never re-applied after adoption');
+    assert.deepEqual(first.pending, ['0013_new.sql']);
+
+    // And not again on the next start.
+    const second = plan({
+      applied: new Set([...afterAdoption, '0013_new.sql']), tableCount: 117,
+      sourceMigrations: [...covered, '0013_new.sql'],
+      incrementals: ['0013_new.sql'],
+    });
+    assert.equal(second.action, 'up_to_date');
+  });
+
+  test('adoption also applies incrementals the imported baseline predates', () => {
+    // Imported from an older baseline that did not include 0013.
+    const verification = compareSchema(EXPECTED, schemaOf([
+      ['clients', ['id', 'tenant_id', 'display_name'], ['idx_clients_tenant']],
+      ['documents', ['id', 'tenant_id', 'title'], ['idx_documents_tenant']],
+    ]));
+    const p = plan({
+      tableCount: 116, verification,
+      sourceMigrations: [...covered, '0013_new.sql'],
+      incrementals: ['0013_new.sql'],
+    });
+    assert.equal(p.action, 'adopt');
+    assert.deepEqual(p.pending, ['0013_new.sql'],
+      'an older import still owes the migrations since');
+  });
+
+  // I — repeated startup
+  test('I: restarting repeatedly after adoption does nothing each time', () => {
+    const applied = new Set([BASE, ...covered]);
+    for (let i = 0; i < 5; i += 1) {
+      const p = plan({ applied, tableCount: 116 });
+      assert.equal(p.action, 'up_to_date');
+      assert.deepEqual(p.record, [], 'nothing is written on a restart');
+    }
+  });
+
+  // -- Verification is real, not a table count ------------------------------
+
+  test('the real baseline parses into the structure adoption checks against', () => {
+    const expected = parseExpectedSchema(readFileSync('database/mysql-schema.sql', 'utf8'));
+    assert.equal(expected.size, 116, 'every table in the baseline');
+
+    const indexes = [...expected.values()].reduce((n, t) => n + t.indexes.size, 0);
+    const columns = [...expected.values()].reduce((n, t) => n + t.columns.size, 0);
+    assert.equal(indexes, 167);
+    assert.ok(columns > 1500, `expected the full column set, got ${columns}`);
+
+    // Spot-check a table whose shape this session changed, so the parser is
+    // demonstrably reading real structure rather than counting CREATEs.
+    const broadcasts = expected.get('broadcasts');
+    assert.ok(broadcasts.columns.has('tenant_id'));
+    assert.ok(broadcasts.columns.has('scheduled_at'));
+    assert.ok(broadcasts.indexes.has('idx_broadcasts_tenant'));
+  });
+
+  test('a same-sized database that is not this schema is refused', () => {
+    // The failure the "116 tables, therefore fine" shortcut would wave through.
+    const expected = parseExpectedSchema(readFileSync('database/mysql-schema.sql', 'utf8'));
+    const impostor = new Map();
+    for (let i = 0; i < 116; i += 1) {
+      impostor.set(`unrelated_table_${i}`, { columns: new Set(['id']), indexes: new Set() });
+    }
+    const verification = compareSchema(expected, impostor);
+    assert.equal(verification.matches, false);
+    assert.equal(verification.missingTables.length, 116);
+    assert.equal(plan({ tableCount: 116, verification }).action, 'refuse');
+  });
+
+  test('extra tables are reported but do not block adoption', () => {
+    const verification = compareSchema(EXPECTED, schemaOf([
+      ['clients', ['id', 'tenant_id', 'display_name'], ['idx_clients_tenant']],
+      ['documents', ['id', 'tenant_id', 'title'], ['idx_documents_tenant']],
+      ['some_host_tool_table', ['id'], []],
+    ]));
+    assert.equal(verification.matches, true, 'an extra table is not a mismatch');
+    assert.deepEqual(verification.extraTables, ['some_host_tool_table']);
+    assert.equal(plan({ tableCount: 117, verification }).action, 'adopt');
   });
 
   // -- The schema itself ----------------------------------------------------
