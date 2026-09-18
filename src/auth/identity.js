@@ -7,6 +7,7 @@
 
 import { permissionsForRoles } from '../permissions/roles.js';
 import { AuthRequiredError, ForbiddenError } from '../http/errors.js';
+import { nowIso } from '../utils/time.js';
 
 export async function loadIdentity(db, userId) {
   const user = await db.one(
@@ -39,8 +40,12 @@ export async function loadIdentity(db, userId) {
 
   // Per-user overrides are applied last and may revoke as well as grant.
   const overrides = await db.many(
-    'SELECT permission_key, granted FROM user_permissions WHERE user_id = ?', [userId]);
+    `SELECT permission_key, granted, expires_at FROM user_permissions
+      WHERE user_id = ? AND (expires_at IS NULL OR expires_at > ?)`,
+    [userId, nowIso()]);
   for (const o of overrides) {
+    // An expired override is simply not loaded, so a temporary elevation ends
+    // by itself rather than waiting for someone to remember to remove it.
     if (o.granted) permissions.add(o.permission_key);
     else { permissions.delete(o.permission_key); }
   }

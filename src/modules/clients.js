@@ -20,7 +20,7 @@ import { audit, auditAsync, recordActivity } from '../services/audit.js';
 import { assertWithinLimit } from '../services/features.js';
 import { provisionClient, openFilingPeriod } from '../services/provisioning.js';
 import { refreshFilingPeriod, buildStageProgress } from '../services/workflow.js';
-import { hashPassword } from '../auth/password.js';
+import { hashPassword, generateTemporaryPassword } from '../auth/password.js';
 import { loadClientIdsForUser } from '../auth/identity.js';
 import { dispatchNotification } from '../services/notifications.js';
 
@@ -222,7 +222,7 @@ router.post('/', async (ctx) => {
 
   let passwordHash = null;
   if (input.createPortalLogin) {
-    const temp = input.portalPassword || `Mm-${ID.client().slice(-8)}-${Math.floor(Math.random() * 9000 + 1000)}`;
+    const temp = input.portalPassword || generateTemporaryPassword();
     passwordHash = await hashPassword(temp);
     ctx._tempPortalPassword = input.portalPassword ? null : temp;
   }

@@ -18,6 +18,11 @@ import { tasksRouter } from './modules/tasks.js';
 import { billingRouter } from './modules/billing.js';
 import { addonsRouter } from './modules/addons.js';
 import { callsRouter } from './modules/calls.js';
+import { usersRouter } from './modules/users.js';
+import { companiesRouter } from './modules/companies.js';
+import { branchesRouter } from './modules/branches.js';
+import { settingsRouter } from './modules/settings.js';
+import { dashboardsRouter } from './modules/dashboards.js';
 
 export function registerRoutes(router) {
   router.mount('/api/auth', authRouter);
@@ -32,5 +37,10 @@ export function registerRoutes(router) {
   router.mount('/api/billing', billingRouter);
   router.mount('/api/addons', addonsRouter);
   router.mount('/api/calls', callsRouter);
+  router.mount('/api/users', usersRouter);
+  router.mount('/api/companies', companiesRouter);
+  router.mount('/api/branches', branchesRouter);
+  router.mount('/api/settings', settingsRouter);
+  router.mount('/api/dashboard', dashboardsRouter);
   return router;
 }

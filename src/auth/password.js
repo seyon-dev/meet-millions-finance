@@ -53,6 +53,47 @@ const COMMON = new Set([
 ]);
 
 /**
+ * A temporary password for an invited user or a newly created portal login.
+ *
+ * Built from crypto.getRandomValues, never Math.random: a temporary password
+ * that a weak PRNG can be made to reproduce is a way into someone's account,
+ * however short its life. Ambiguous glyphs are left out because these get read
+ * aloud and typed by hand, and the shape always satisfies the default policy.
+ */
+const PASSWORD_ALPHABET = {
+  upper: 'ABCDEFGHJKLMNPQRSTUVWXYZ',   // no I or O
+  lower: 'abcdefghijkmnopqrstuvwxyz', // no l
+  digit: '23456789',                   // no 0 or 1
+  symbol: '!@#$%&*?-+',
+};
+
+export function generateTemporaryPassword(length = 16) {
+  const all = Object.values(PASSWORD_ALPHABET).join('');
+  // One character from each class first, so the result always passes policy,
+  // then fill the rest and shuffle so the classes are not in a fixed order.
+  const chars = Object.values(PASSWORD_ALPHABET).map(set => pickFrom(set));
+  while (chars.length < Math.max(12, length)) chars.push(pickFrom(all));
+
+  // Fisher-Yates with unbiased random indices.
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = randomBelow(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
+}
+
+function pickFrom(set) { return set[randomBelow(set.length)]; }
+
+/** Rejection sampling — modulo alone would skew towards the lower indices. */
+function randomBelow(limit) {
+  const max = Math.floor(0xFFFFFFFF / limit) * limit;
+  for (;;) {
+    const [n] = crypto.getRandomValues(new Uint32Array(1));
+    if (n < max) return n % limit;
+  }
+}
+
+/**
  * Policy check. Returns `{ ok, errors[], score }`. The policy itself is a
  * tenant setting (security_policies), so the caller passes the limits in.
  */

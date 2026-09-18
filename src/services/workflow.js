@@ -212,25 +212,34 @@ function statusAtLeast(status, target) {
   return normalise(a) >= normalise(b);
 }
 
+/**
+ * Which of the proposal's ten stages a filing period is sitting in.
+ *
+ * Exported so the dashboards count periods with exactly the mapping the
+ * client's progress stepper draws — two implementations of "what stage is
+ * this in" would drift, and the two screens would then disagree in front of
+ * the client.
+ */
+export const STATUS_TO_STAGE = {
+  collecting: 'upload',
+  under_review: 'verification',
+  query_raised: 'query',
+  awaiting_client: 'query',
+  verified: 'calculation',
+  calculated: 'approval',
+  pending_approval: 'approval',
+  approved: 'client_review',
+  client_review: 'client_review',
+  signed_off: 'payment',
+  paid: 'archive',
+  filed: 'archive',
+  archived: 'archive',
+  rejected: 'verification',
+};
+
 function currentStageKey(status, openQueries) {
   if (openQueries > 0) return 'query';
-  const map = {
-    collecting: 'upload',
-    under_review: 'verification',
-    query_raised: 'query',
-    awaiting_client: 'query',
-    verified: 'calculation',
-    calculated: 'approval',
-    pending_approval: 'approval',
-    approved: 'client_review',
-    client_review: 'client_review',
-    signed_off: 'payment',
-    paid: 'archive',
-    filed: 'archive',
-    archived: 'archive',
-    rejected: 'verification',
-  };
-  return map[status] ?? 'upload';
+  return STATUS_TO_STAGE[status] ?? 'upload';
 }
 
 /** SLA deadline for a newly submitted document. */
