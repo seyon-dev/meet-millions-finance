@@ -45,6 +45,7 @@ export class RequestContext {
     this.route = null;
     this.routeOptions = {};
     this._body = undefined;
+    this._raw = undefined;
     this._deferred = [];
   }
 
@@ -73,6 +74,31 @@ export class RequestContext {
     }
     return this._body;
   }
+
+  /**
+   * The body exactly as it arrived, for signature verification.
+   *
+   * A webhook signature covers the bytes the sender produced, so re-serialising
+   * a parsed object would not reproduce them: key order, whitespace and number
+   * formatting all differ. Cached, because the stream can only be read once —
+   * and because body() and rawBody() must never both consume it.
+   */
+  async rawBody() {
+    if (this._raw !== undefined) return this._raw;
+    const declared = Number(this.request.headers.get('content-length') || 0);
+    if (declared > MAX_JSON_BYTES) {
+      throw new PayloadTooLargeError(MAX_JSON_BYTES, 'That request body is too large.');
+    }
+    const text = await this.request.text();
+    if (text.length > MAX_JSON_BYTES) {
+      throw new PayloadTooLargeError(MAX_JSON_BYTES, 'That request body is too large.');
+    }
+    this._raw = text;
+    return text;
+  }
+
+  /** A request header, case-insensitively. */
+  header(name) { return this.request.headers.get(name); }
 
   async formData() { return this.request.formData(); }
 

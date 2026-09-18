@@ -23,6 +23,8 @@ import { companiesRouter } from './modules/companies.js';
 import { branchesRouter } from './modules/branches.js';
 import { settingsRouter } from './modules/settings.js';
 import { dashboardsRouter } from './modules/dashboards.js';
+import { filesRouter } from './modules/files.js';
+import { webhooksRouter } from './modules/webhooks.js';
 
 export function registerRoutes(router) {
   router.mount('/api/auth', authRouter);
@@ -42,5 +44,10 @@ export function registerRoutes(router) {
   router.mount('/api/branches', branchesRouter);
   router.mount('/api/settings', settingsRouter);
   router.mount('/api/dashboard', dashboardsRouter);
+
+  // Outside /api: binary responses linked directly from the page, and inbound
+  // webhooks whose authentication is a signature rather than a session.
+  router.mount('/files', filesRouter);
+  router.mount('/webhooks', webhooksRouter);
   return router;
 }

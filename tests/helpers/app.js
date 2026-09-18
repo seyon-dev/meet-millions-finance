@@ -55,6 +55,13 @@ export async function createApp({ env = {}, bootstrap = true } = {}) {
     let payload;
     if (body instanceof FormData) {
       payload = body;
+    } else if (typeof body === 'string') {
+      // Sent verbatim. Webhook signatures cover the exact bytes, so
+      // re-encoding a string body here would break every signature test.
+      if (!requestHeaders.has('Content-Type')) {
+        requestHeaders.set('Content-Type', 'application/json');
+      }
+      payload = body;
     } else if (body !== null && body !== undefined) {
       requestHeaders.set('Content-Type', 'application/json');
       payload = JSON.stringify(body);

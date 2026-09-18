@@ -139,6 +139,30 @@ export async function audit(ctx, {
   return entry;
 }
 
+/**
+ * An audit entry for something the system did on its own — a verified webhook
+ * settling a payment, a cron job closing a period.
+ *
+ * These changes are exactly the ones nobody watched happen, so leaving them out
+ * of the chain would put the least observed events beyond review. The actor is
+ * recorded as the source that caused it, never as a user who was not there.
+ */
+export async function auditSystem(env, { tenantId, source = 'system', ...payload }) {
+  return audit({
+    env,
+    tenantId,
+    userId: null,
+    user: null,
+    roleKeys: ['system'],
+    ip: source,
+    userAgent: `meet-millions-${source}`.slice(0, 400),
+    session: null,
+    apiKey: null,
+    requestId: null,
+    defer: (p) => (typeof p === 'function' ? p() : p),
+  }, { ...payload, actorType: 'system', actorName: source });
+}
+
 /** Fire-and-forget audit — the response does not wait for the write. */
 export function auditAsync(ctx, payload) {
   return ctx.defer(audit(ctx, payload).catch(err => {
