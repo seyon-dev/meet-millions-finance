@@ -25,6 +25,10 @@ import { settingsRouter } from './modules/settings.js';
 import { dashboardsRouter } from './modules/dashboards.js';
 import { filesRouter } from './modules/files.js';
 import { webhooksRouter } from './modules/webhooks.js';
+import { auditRouter } from './modules/audit.js';
+import { notificationsRouter } from './modules/notifications.js';
+import { searchRouter } from './modules/search.js';
+import { integrationsRouter } from './modules/integrations.js';
 
 export function registerRoutes(router) {
   router.mount('/api/auth', authRouter);
@@ -44,6 +48,10 @@ export function registerRoutes(router) {
   router.mount('/api/branches', branchesRouter);
   router.mount('/api/settings', settingsRouter);
   router.mount('/api/dashboard', dashboardsRouter);
+  router.mount('/api/audit', auditRouter);
+  router.mount('/api/notifications', notificationsRouter);
+  router.mount('/api/search', searchRouter);
+  router.mount('/api/integrations', integrationsRouter);
 
   // Outside /api: binary responses linked directly from the page, and inbound
   // webhooks whose authentication is a signature rather than a session.

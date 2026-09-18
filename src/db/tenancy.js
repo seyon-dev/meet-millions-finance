@@ -25,6 +25,7 @@ export const TENANT_TABLES = new Set([
   'tasks', 'activities', 'subscriptions', 'subscription_usage', 'add_on_subscriptions',
   'add_on_usage', 'invoices', 'invoice_items', 'payments', 'payment_transactions',
   'notification_templates', 'notification_preferences', 'notifications', 'message_deliveries',
+  'oauth_states',
   'automation_rules', 'whatsapp_templates', 'chat_threads', 'chat_messages', 'chatbot_flows',
   'broadcasts', 'voice_notes', 'support_tickets', 'ticket_messages', 'integrations',
   'oauth_connections', 'integration_sync_logs', 'field_mappings', 'campaigns', 'leads',
@@ -117,12 +118,29 @@ export class TenantScope {
     return row;
   }
 
-  async all(table, where = {}, { columns = '*', order = 'created_at DESC', limit = 500 } = {}) {
+  /**
+   * Every row matching a simple equality filter.
+   *
+   * The default ordering is `created_at DESC`, which most tables have — but
+   * not all (notification_preferences and the singleton settings tables have
+   * only `updated_at`). Rather than make every caller remember which, the
+   * default is checked against the real schema and falls back, so asking for
+   * rows never fails over a column that is merely the usual choice.
+   */
+  async all(table, where = {}, { columns = '*', order = null, limit = 500 } = {}) {
     const w = this.where(table);
     for (const [k, v] of Object.entries(where)) w.eqIf(k, v);
+    const orderBy = order ?? await this.defaultOrder(table);
     return this.db.many(
-      `SELECT ${columns} FROM ${ident(table)} ${w.sql} ORDER BY ${order} LIMIT ?`,
+      `SELECT ${columns} FROM ${ident(table)} ${w.sql} ORDER BY ${orderBy} LIMIT ?`,
       [...w.params, limit]);
+  }
+
+  async defaultOrder(table) {
+    for (const column of ['created_at', 'updated_at']) {
+      if (await this.db.hasColumn(table, column)) return `${column} DESC`;
+    }
+    return 'rowid';
   }
 
   async count(table, where = {}) {

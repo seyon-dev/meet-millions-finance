@@ -57,14 +57,39 @@ export const AUDITED_ACTIONS = [
   'api.key_created', 'api.key_revoked',
 ];
 
+/**
+ * The fields the hash covers, in a fixed order.
+ *
+ * Every stored field except `hash` itself is listed. A field left out of this
+ * list is a field an attacker may edit without breaking the chain — leaving
+ * out `entity_label`, for instance, would let someone change *which* client a
+ * recorded action was about while the trail still verified. `prev_hash` is not
+ * listed because it is already hashed in as the chain prefix.
+ *
+ * Adding a column to audit_logs means adding it here, at the end, deliberately.
+ */
+const HASHED_FIELDS = [
+  'tenant_id', 'sequence',
+  'actor_id', 'actor_name', 'actor_role', 'actor_type',
+  'action', 'category',
+  'entity_type', 'entity_id', 'entity_label',
+  'old_value_json', 'new_value_json',
+  'severity', 'result',
+  'ip', 'user_agent', 'session_id', 'request_id',
+  'metadata_json', 'retain_until', 'created_at',
+];
+
 function canonical(entry) {
-  // A stable serialisation — key order here defines the hash, so it must not
-  // depend on object insertion order.
-  return [
-    entry.tenant_id ?? '', entry.sequence, entry.actor_id ?? '', entry.action,
-    entry.entity_type ?? '', entry.entity_id ?? '', entry.result,
-    entry.old_value_json ?? '', entry.new_value_json ?? '', entry.created_at,
-  ].join('|');
+  // A stable serialisation — field order here defines the hash, so it must not
+  // depend on object insertion order. The separator is escaped out of the
+  // values so two different entries cannot serialise identically.
+  return HASHED_FIELDS
+    .map((field) => {
+      const value = entry[field];
+      if (value === null || value === undefined) return '';
+      return String(value).replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
+    })
+    .join('|');
 }
 
 async function nextSequenceAndHash(db, tenantId) {
@@ -224,7 +249,19 @@ export async function verifyChain(db, tenantId, { limit = 5000 } = {}) {
     expectedSequence++;
   }
 
-  return { valid: true, checked: rows.length, brokenAt: null, reason: null };
+  return {
+    valid: true,
+    checked: rows.length,
+    brokenAt: null,
+    reason: null,
+    // A hash chain proves nothing was edited or removed *from the middle*.
+    // Entries deleted from the end leave a shorter but internally consistent
+    // chain, so the caller is given the range and the highest sequence to
+    // compare against its own records.
+    firstSequence: rows.length ? rows[0].sequence : null,
+    lastSequence: rows.length ? rows[rows.length - 1].sequence : null,
+    coversTailTruncation: false,
+  };
 }
 
 /** Purge entries past their retention date (cron). */

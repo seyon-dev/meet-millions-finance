@@ -118,7 +118,13 @@ export async function describeAllIntegrations(ctx) {
 
     // "Connected" needs both the platform credentials and, where relevant,
     // a linked account. Anything short of that reports as not connected.
-    const connected = base.configured && (!oauthKind || !!oauthConnection);
+    //
+    // A provider with no required keys is not a vendor we connect to at all —
+    // the website form is served by this Worker. Calling that "connected"
+    // would put a green tick against something no one has set up, so it gets
+    // its own status and is left out of the connected count.
+    const selfHosted = (base.requiredKeys ?? []).length === 0 && !oauthKind;
+    const connected = !selfHosted && base.configured && (!oauthKind || !!oauthConnection);
 
     return {
       ...base,
@@ -127,7 +133,8 @@ export async function describeAllIntegrations(ctx) {
       addOnActive: meta?.addOn ? activeKeys.has(meta.addOn) : true,
       oauth: oauthKind,
       account: oauthConnection?.account_email ?? null,
-      status: connected ? 'connected' : 'not_connected',
+      selfHosted,
+      status: selfHosted ? 'self_hosted' : (connected ? 'connected' : 'not_connected'),
       needsAccountLink: !!oauthKind && !oauthConnection,
       lastTestAt: record?.last_test_at ?? null,
       lastTestOk: record?.last_test_ok === null || record?.last_test_ok === undefined
@@ -177,7 +184,7 @@ export async function testIntegration(ctx, key) {
       last_test_message: result.ok
         ? 'Connection verified.'
         : (result.error?.message ?? 'The connection test failed.').slice(0, 500),
-      status: result.ok ? 'connected' : (result.status === 'not_configured' ? 'not_connected' : 'error'),
+      status: patchStatus(result),
       last_error: result.ok ? null : (result.error?.message ?? null),
     };
 
@@ -203,7 +210,12 @@ export async function testIntegration(ctx, key) {
     provider: key,
     name: provider.name,
     ok: result.ok,
-    status: result.ok ? 'connected' : (result.status === 'not_configured' ? 'not_connected' : 'error'),
+    // The provider's own verdict, kept intact. Collapsing `not_configured`
+    // into a generic failure would send someone hunting for a fault when the
+    // answer is "nobody has added the keys yet".
+    status: result.status,
+    // What the integration row now says, which is a smaller vocabulary.
+    connectionStatus: patchStatus(result),
     configured: provider.isConfigured(),
     missingKeys: provider.missingKeys(),
     message: result.ok
@@ -212,6 +224,11 @@ export async function testIntegration(ctx, key) {
     details: result.ok ? result.data : null,
     durationMs,
   };
+}
+
+function patchStatus(result) {
+  if (result.ok) return 'connected';
+  return result.status === 'not_configured' ? 'not_connected' : 'error';
 }
 
 /** Record a sync run against an integration, for the Sync Log screens. */

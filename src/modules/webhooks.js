@@ -346,10 +346,12 @@ router.post('/whatsapp', async (ctx) => {
 async function storeInboundWhatsApp(db, change, message) {
   const businessNumber = change?.metadata?.display_phone_number
     ?? change?.metadata?.phone_number_id ?? null;
-  const integration = await db.one(
-    `SELECT tenant_id FROM integrations
-      WHERE provider = 'whatsapp' AND status = 'connected'
-        AND (account_ref = ? OR account_ref IS NULL) LIMIT 1`, [businessNumber]);
+  // The business number is stored in the integration's own config, so the
+  // match is on that rather than on a column the table does not have.
+  const candidates = await db.many(
+    "SELECT tenant_id, config_json FROM integrations WHERE provider = 'whatsapp' AND status = 'connected'");
+  const integration = candidates.find(c => !businessNumber
+    || String(c.config_json ?? '').includes(String(businessNumber))) ?? candidates[0] ?? null;
   if (!integration) {
     return { status: 'ignored', message: 'No organisation is connected to that WhatsApp number.' };
   }
@@ -441,9 +443,11 @@ router.post('/meta-leads', async (ctx) => {
   // Meta sends only an id; the lead's fields need a credentialed fetch. That
   // is the sync job's work, so the event is queued rather than half-applied.
   const db = new Db(ctx.env.DB);
-  const integration = await db.one(
-    `SELECT tenant_id FROM integrations WHERE provider = 'meta_leads' AND status = 'connected'
-       AND (account_ref = ? OR account_ref IS NULL) LIMIT 1`, [change?.page_id ?? null]);
+  const candidates = await db.many(
+    "SELECT tenant_id, config_json FROM integrations WHERE provider = 'meta_leads' AND status = 'connected'");
+  const pageId = change?.page_id ?? null;
+  const integration = candidates.find(c => !pageId
+    || String(c.config_json ?? '').includes(String(pageId))) ?? candidates[0] ?? null;
 
   if (integration) {
     const scope = new TenantScope(db, integration.tenant_id);
@@ -451,8 +455,9 @@ router.post('/meta-leads', async (ctx) => {
       id: ID.syncLog(),
       provider: 'meta_leads',
       direction: 'inbound',
+      operation: 'leadgen_webhook',
       status: 'queued',
-      records_total: 1,
+      records_in: 1,
       detail_json: JSON.stringify({
         leadgenId: change?.leadgen_id, formId: change?.form_id, pageId: change?.page_id,
       }),
