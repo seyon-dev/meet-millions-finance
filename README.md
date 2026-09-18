@@ -1,14 +1,17 @@
 # Meet Millions Finance CRM
 
-A multi-tenant finance-practice CRM built for Cloudflare Workers: client
-onboarding, document collection and verification, GST computation, reports and
-sign-off, billing and payments, cloud calling, and thirty enterprise add-ons.
+A multi-tenant finance-practice CRM: client onboarding, document collection and
+verification, GST computation, reports and sign-off, billing and payments,
+cloud calling, and thirty enterprise add-ons.
+
+Runs on **Node.js and MySQL**. Deployed on Hostinger — see
+[docs/hostinger-deployment.md](docs/hostinger-deployment.md).
 
 Nothing here is a mock. Every screen reads and writes the real API, every API
-route reads and writes D1, and where a third-party vendor has no credentials on
-a deployment, the interface says **Not Connected** rather than simulating a
-success. See [docs/honesty.md](docs/honesty.md) for what that means in practice
-and how it is enforced.
+route reads and writes the database, and where a third-party vendor has no
+credentials on a deployment, the interface says **Not Connected** rather than
+simulating a success. See [docs/honesty.md](docs/honesty.md) for what that
+means in practice and how it is enforced.
 
 ---
 
@@ -19,9 +22,9 @@ npm install
 npm run dev            # http://localhost:8787, with a demonstration organisation
 ```
 
-`npm run dev` starts a development server that runs **the real Worker** over a
-`node:sqlite` stand-in for D1, an in-memory R2 and an in-memory KV. No
-Cloudflare account, no `wrangler login`, no network. Data resets on restart.
+`npm run dev` starts a development server that runs **the real application**
+over a `node:sqlite` stand-in for the database and in-memory storage. No
+database server, no credentials, no network. Data resets on restart.
 
 It prints two sign-ins:
 
@@ -34,13 +37,23 @@ Both use `Demo-Passw0rd!24`. Every record the seed creates is flagged as
 demonstration data, and the interface says so in a banner, because a demo that
 looks like production is how somebody ends up filing it.
 
-### Against Cloudflare
+### Against MySQL, as production runs
 
 ```bash
-cp .dev.vars.example .dev.vars      # fill in what you have; blanks are fine
-npm run db:migrate:local
-npm run dev:wrangler
+cp .env.example .env                # fill in DB_* and STORAGE_ROOT
+npm run migrate                     # create the tables
+npm start                           # http://localhost:3000
 ```
+
+`npm start` is what Hostinger runs. It serves the same application over
+Express, with MySQL and filesystem storage in place of the development
+stand-ins.
+
+### Deploying
+
+[docs/hostinger-deployment.md](docs/hostinger-deployment.md) is written to be
+followed by somebody who is not a developer. [docs/migration.md](docs/migration.md)
+explains what moved off Cloudflare and what did not.
 
 ---
 
@@ -120,7 +133,10 @@ tests/                12 suites, 114 tests
 | [docs/api.md](docs/api.md) | Every route, its permission, and the response envelope |
 | [docs/integrations.md](docs/integrations.md) | The thirteen vendors, their keys, and what happens without them |
 | [docs/security.md](docs/security.md) | Auth, hashing, encryption, uploads, audit, and the known limits |
-| [docs/deployment.md](docs/deployment.md) | From an empty Cloudflare account to a running deployment |
+| [docs/hostinger-deployment.md](docs/hostinger-deployment.md) | From an empty Hostinger account to a running deployment |
+| [docs/mysql.md](docs/mysql.md) | The database: schema generation, dialect, connections |
+| [docs/migration.md](docs/migration.md) | What moved off Cloudflare, and what was left behind |
+| [docs/deployment.md](docs/deployment.md) | The original Cloudflare instructions — historical |
 | [docs/honesty.md](docs/honesty.md) | What is real, what is not built, and how to tell |
 | [docs/requirements-matrix.md](docs/requirements-matrix.md) | Every requirement from the brief, and where it lives |
 

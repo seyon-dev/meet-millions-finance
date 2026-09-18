@@ -32,7 +32,14 @@ router.use(async (ctx, route) => {
 registerRoutes(router);
 
 const WORKER_PATHS = ['/api/', '/webhooks/', '/files/'];
-function isWorkerPath(pathname) {
+/**
+ * Exported so server.js routes on exactly this predicate rather than a
+ * second copy of it. /health and /ready sit outside /api/, and an Express
+ * pattern that only matched /api, /webhooks and /files silently sent both
+ * to the SPA shell — a health check that answers 200 with an HTML page is
+ * worse than one that fails, because a monitor believes it.
+ */
+export function isWorkerPath(pathname) {
   return WORKER_PATHS.some(p => pathname.startsWith(p))
     || pathname === '/api' || pathname === '/health' || pathname === '/ready';
 }

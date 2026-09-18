@@ -358,7 +358,7 @@ async function openIntegration(integration, reload) {
                 el('code.mm-mono', { text: key }),
                 integration.missingKeys?.includes(key) ? pill('Optional', 'neutral') : pill('Set', 'success')))),
             el('p.mm-muted.mm-text-xs.mm-mt-2', {
-              text: 'Set these with `wrangler secret put`, or in the Worker’s environment. They never pass through this interface.',
+              text: 'Set these in the hosting environment — on Hostinger, the Node.js application’s environment variables. They never pass through this interface.',
             }))
         : null,
 

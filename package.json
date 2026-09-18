@@ -2,26 +2,42 @@
   "name": "meet-millions-finance-crm",
   "version": "1.0.0",
   "private": true,
-  "description": "Meet Millions Finance CRM — cloud-native GST/TDS compliance and workflow platform for accounting firms and finance teams.",
+  "description": "Meet Millions Finance CRM \u2014 cloud-native GST/TDS compliance and workflow platform for accounting firms and finance teams.",
   "type": "module",
-  "engines": { "node": ">=22.0.0" },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "node scripts/dev-server.mjs --seed",
-    "dev:wrangler": "wrangler dev",
-    "deploy": "node scripts/preflight-deploy.mjs && wrangler deploy",
-    "deploy:check": "node scripts/preflight-deploy.mjs",
-    "deploy:dry": "wrangler deploy --dry-run",
-    "db:migrate:local": "wrangler d1 migrations apply meetmillions_crm --local",
-    "db:migrate:remote": "wrangler d1 migrations apply meetmillions_crm --remote",
     "db:check": "node scripts/check-migrations.mjs",
     "test": "node --experimental-sqlite --test --test-reporter=spec tests/*.test.js",
     "test:quiet": "node --experimental-sqlite --test tests/*.test.js",
     "build": "node scripts/build.mjs",
     "check:syntax": "node scripts/check-syntax.mjs",
     "ui-check": "node scripts/ui-check.mjs",
-    "check": "npm run build && npm run test:quiet"
+    "check": "npm run build && npm run test:quiet",
+    "start": "node server.js",
+    "dev:node": "node server.js",
+    "migrate": "node scripts/migrate-mysql.mjs",
+    "migrate:check": "node scripts/migrate-mysql.mjs --check",
+    "schema:mysql": "node scripts/mysql-schema.mjs",
+    "seed": "node scripts/seed-demo.mjs",
+    "legacy:dev-wrangler": "wrangler dev",
+    "legacy:deploy": "node scripts/preflight-deploy.mjs && wrangler deploy",
+    "legacy:deploy-check": "node scripts/preflight-deploy.mjs",
+    "legacy:deploy-dry": "wrangler deploy --dry-run",
+    "legacy:db-migrate-local": "wrangler d1 migrations apply meetmillions_crm --local",
+    "legacy:db-migrate-remote": "wrangler d1 migrations apply meetmillions_crm --remote"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
-  }
+  },
+  "dependencies": {
+    "compression": "^1.8.2",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.2.1",
+    "mysql2": "^3.24.4",
+    "node-cron": "^4.6.0"
+  },
+  "main": "server.js"
 }

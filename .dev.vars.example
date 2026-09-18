@@ -28,6 +28,42 @@ PLATFORM_OWNER_EMAIL=
 PLATFORM_OWNER_PASSWORD=
 PLATFORM_OWNER_NAME=Platform Owner
 
+# ---- Node.js runtime (Hostinger) -------------------------------------------
+# Hostinger sets PORT itself; the app reads it and falls back to 3000 locally.
+NODE_ENV=production
+PORT=3000
+HOST=0.0.0.0
+
+# The origin this application is served from. OAuth redirect URIs, e-mail
+# links and white-label instructions are built from it, so a wrong value
+# breaks every OAuth flow. No default: set it to your real domain.
+APP_URL=
+
+# ---- MySQL (Hostinger) -----------------------------------------------------
+# From hPanel → Databases → Management. The app refuses to start if any of
+# these four are missing, and says which.
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=
+DB_USER=
+DB_PASSWORD=
+# Connections held open. Hostinger caps concurrent connections per database;
+# 10 is comfortable for one Node process.
+DB_POOL_SIZE=10
+
+# ---- Document storage ------------------------------------------------------
+# An absolute path OUTSIDE the application directory. Everything a client
+# uploads lives here. The server refuses to start if this sits inside the
+# directory it publishes, because every document would then be downloadable
+# without signing in.
+STORAGE_ROOT=/home/USERNAME/mm-storage
+
+# ---- Scheduled jobs --------------------------------------------------------
+# The three cron schedules run inside the Node process. Set to false on any
+# additional instance, or the jobs run twice.
+RUN_SCHEDULER=true
+CRON_TIMEZONE=UTC
+
 # ---- Runtime configuration (optional; wrangler.jsonc `vars` sets these in
 # ---- production, so they are only needed for local `wrangler dev`) ----------
 # Origin this Worker is served from. OAuth redirect URIs and e-mail links are

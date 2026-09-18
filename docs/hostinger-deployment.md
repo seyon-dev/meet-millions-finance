@@ -1,0 +1,333 @@
+# Deploying on Hostinger
+
+From an empty Hostinger account to a running CRM.
+
+This is written to be followed by somebody who is not a developer. Every step
+says what to click, what to type, and how to tell it worked. Where something
+can go wrong, it says what the failure looks like.
+
+Set aside about an hour. Most of it is waiting.
+
+---
+
+## Before you start
+
+You need:
+
+- A Hostinger **Cloud Startup** plan (or anything above it)
+- The GitHub repository connected to your Hostinger account
+- A domain, or Hostinger's temporary one to begin with
+
+You do **not** need Cloudflare, Wrangler, or anything installed on your own
+computer.
+
+---
+
+## 1. Create the MySQL database
+
+**hPanel → Databases → Management**
+
+1. Under *Create a New MySQL Database*, fill in:
+   - **Database name** — `meetmillions_crm` (Hostinger adds a prefix, giving
+     something like `u123456789_meetmillions_crm`; that full name is what you
+     need later)
+   - **Database username** — `mm_app`
+   - **Password** — press *Generate* and **copy it somewhere safe now**.
+     Hostinger will not show it again.
+2. Press **Create**.
+
+Write down all four values. You will paste them in step 5:
+
+| | Where to find it |
+| --- | --- |
+| Database name | the full prefixed name in the list |
+| Username | the full prefixed username |
+| Password | the one you just generated |
+| Host | usually `localhost` — the list shows it |
+
+---
+
+## 2. Create the Node.js application
+
+**hPanel → Websites → Add Website → Node.js**
+
+If Hostinger asks you to pick a framework and Express is not offered, choose
+**Other**. The settings below are what matter.
+
+| Setting | Value |
+| --- | --- |
+| Node.js version | **20.x or newer** (22.x is fine) |
+| Application root | leave as the default |
+| Application startup file | `server.js` |
+| Build command | `npm install && npm run build` |
+| Start command | `npm start` |
+
+---
+
+## 3. Connect GitHub
+
+1. In the application's settings, find **GitHub** (sometimes under *Deployment*).
+2. Authorise Hostinger if it asks.
+3. Choose this repository.
+4. Choose the branch: **`main`**.
+
+`main` is the production branch. Every push to it can be deployed from here.
+
+---
+
+## 4. Create the storage folder
+
+Uploaded documents — every client's tax records — are stored as files. They
+must live **outside** the folder the website serves, or anyone who guesses a
+URL could download them.
+
+**hPanel → Files → File Manager**
+
+1. Go to your home folder (the one containing `domains`, `public_html` and so on).
+2. Create a folder called `mm-storage`.
+3. Note its full path. It looks like `/home/u123456789/mm-storage`.
+
+The application refuses to start if you point it at a public folder, so a
+mistake here stops the deployment rather than quietly exposing documents.
+
+---
+
+## 5. Set the environment variables
+
+**In the Node.js application → Environment variables.**
+
+Add each of these. `.env.example` in the repository lists every variable the
+application understands; these are the ones it cannot start without.
+
+| Variable | What to put |
+| --- | --- |
+| `NODE_ENV` | `production` |
+| `APP_URL` | your real address, e.g. `https://crm.yourfirm.in` — no trailing slash |
+| `DB_HOST` | from step 1 (usually `localhost`) |
+| `DB_PORT` | `3306` |
+| `DB_NAME` | the full prefixed database name from step 1 |
+| `DB_USER` | the full prefixed username from step 1 |
+| `DB_PASSWORD` | the password from step 1 |
+| `STORAGE_ROOT` | the path from step 4, e.g. `/home/u123456789/mm-storage` |
+| `AUTH_SECRET` | a long random string — see below |
+| `ENCRYPTION_KEY` | a different long random string |
+| `FILE_SIGNING_SECRET` | a third long random string |
+| `DEMO_MODE` | `false` |
+
+### The three secrets
+
+They do three different jobs — signing sessions, encrypting stored
+credentials, signing file links. They must be **three different values**, so
+that changing one does not force changing the others.
+
+Generate them at <https://www.random.org/strings/> (60 characters, letters and
+digits, three of them), or on a Mac or Linux terminal:
+
+```bash
+openssl rand -base64 48
+```
+
+Run it three times. Keep them somewhere safe — losing `ENCRYPTION_KEY` means
+every user has to set up two-factor authentication again.
+
+**Never put these in the repository.** They belong only in Hostinger's
+environment variables screen.
+
+---
+
+## 6. Deploy
+
+Press **Deploy** in the Node.js application.
+
+Hostinger will pull `main`, run `npm install && npm run build`, and start
+`npm start`.
+
+**How to tell it worked:** the build log ends with `Build checks passed.` and
+the application status shows as running.
+
+**If the build fails**, the log names the reason. The usual ones:
+
+| Message | Meaning |
+| --- | --- |
+| `DB_NAME, DB_USER … are not set` | A variable in step 5 is missing or misspelled |
+| `STORAGE_ROOT … is inside the directory this server publishes` | Step 4's folder is in the wrong place |
+| `The storage directory … is not writable` | The path in step 4 is wrong, or the folder does not exist |
+
+---
+
+## 7. Create the database tables
+
+The application will not work until the database has its tables. This is a
+one-time step.
+
+**In the Node.js application → Terminal** (or SSH), run:
+
+```bash
+npm run migrate
+```
+
+It prints `Done. 116 tables.`
+
+It is safe to run twice — the second time it says the schema is already
+applied and changes nothing. It will also **refuse** to run if the database
+already contains data it did not create, rather than write over it.
+
+### If there is no terminal
+
+Import the schema by hand instead:
+
+**hPanel → Databases → phpMyAdmin → your database → Import**, and upload
+`database/mysql-schema.sql` from this repository.
+
+---
+
+## 8. Create the first administrator
+
+There is no default account and no default password.
+
+1. Add two more environment variables:
+   - `PLATFORM_OWNER_EMAIL` — your email address
+   - `PLATFORM_OWNER_PASSWORD` — a password of at least 12 characters
+2. Restart the application.
+3. Visit `https://your-domain/ready` in a browser. It answers with JSON saying
+   what it set up.
+4. Sign in at `https://your-domain/`. You will be asked to change the password
+   immediately.
+5. **Delete those two environment variables** and restart.
+
+---
+
+## 9. Domain and SSL
+
+**hPanel → Websites → your site → Domains**
+
+1. Point your domain at the application.
+2. Under **SSL**, turn on the free certificate. Wait for it to issue — usually
+   a few minutes.
+3. Set `APP_URL` to the `https://` address and restart.
+
+`APP_URL` must match the address people actually use. Every OAuth
+redirect and e-mail link is built from it.
+
+---
+
+## 10. Check it works
+
+Visit each of these:
+
+| Address | What you should see |
+| --- | --- |
+| `https://your-domain/health` | `{"ok":true,...}` — the app is running |
+| `https://your-domain/ready` | JSON describing the setup |
+| `https://your-domain/` | The sign-in screen |
+
+Then sign in and:
+
+- **Upload a document** to a client. It should appear in the list, and a file
+  should appear under your `mm-storage` folder.
+- **Download it back.** It should open.
+- **Open Settings → Integrations.** Everything will say *Not Connected* until
+  you add credentials, which is correct.
+
+---
+
+## 11. Scheduled jobs
+
+Reminders, digests, retention and sync run **inside the application** — there
+is nothing to set up in Hostinger's cron screen.
+
+Three schedules run automatically:
+
+| When | What |
+| --- | --- |
+| Every 15 minutes | Due reminders, overdue invoices, SLA breaches, delayed automation, broadcasts |
+| Daily at 03:00 UTC | Filing periods, renewals, retention, audit anchoring, reports, sync |
+| Mondays at 09:00 UTC | The weekly digest |
+
+They stop when the application stops. If Hostinger puts your application to
+sleep when idle, jobs do not run while it is asleep — see *Known limits*.
+
+**If you ever run more than one copy of the application**, set
+`RUN_SCHEDULER=false` on all but one, or every job runs twice.
+
+To use a different timezone, set `CRON_TIMEZONE`, e.g. `Asia/Kolkata`.
+
+---
+
+## 12. Adding integrations
+
+Everything below is optional. The CRM works without any of it, and each one
+honestly reports *Not Connected* until configured.
+
+Add the relevant variables from `.env.example` in the environment variables
+screen, restart, then open **Settings → Integrations** and press **Test
+connection** — it makes a real call to the vendor rather than trusting the
+configuration.
+
+| To enable | Variables |
+| --- | --- |
+| Email | `SES_*` |
+| SMS | `MSG91_*` |
+| WhatsApp | `WHATSAPP_*` |
+| Payments | `RAZORPAY_*`, `STRIPE_*`, `CASHFREE_*`, `PHONEPE_*` |
+| Cloud calling | `TELEPHONY_PROVIDER` plus that provider's keys |
+| Google / Microsoft | `GOOGLE_*`, `MS_GRAPH_*` |
+| Upload scanning | `VIRUS_SCAN_URL` |
+
+### Webhooks
+
+Several integrations call back into the application. Give the vendor:
+
+```
+https://your-domain/webhooks/<provider>
+```
+
+for example `https://your-domain/webhooks/razorpay`. Signatures are verified,
+so a webhook without the matching secret configured is rejected.
+
+---
+
+## Known limits on shared hosting
+
+Stated plainly, because they affect how the application behaves:
+
+1. **One process.** The scheduler assumes a single instance. Running several
+   without setting `RUN_SCHEDULER=false` makes every scheduled job run once
+   per instance.
+2. **Sleeping applications.** If your plan suspends idle applications,
+   scheduled jobs do not run while suspended. They catch up on the next pass,
+   except for anything time-critical. If reminders must be punctual, keep the
+   application awake with an uptime monitor hitting `/health`.
+3. **Disk is not backed up by the application.** `mm-storage` holds every
+   uploaded document. Hostinger's own backups cover it; the application does
+   not replicate it anywhere. See [disaster-recovery.md](disaster-recovery.md).
+4. **Uploads are limited by memory.** A very large ZIP is expanded in memory.
+   The default ceiling is 50MB (`UPLOAD_MAX_BYTES`).
+
+---
+
+## Updating later
+
+Push to `main`, then press **Deploy** in Hostinger.
+
+If a release adds database tables, run `npm run migrate` again afterwards. It
+only ever adds; it never drops anything.
+
+---
+
+## Getting help from the logs
+
+**hPanel → the Node.js application → Logs.**
+
+The application prints what it is doing at startup:
+
+```
+  Meet Millions Finance CRM
+  listening  http://0.0.0.0:3000
+  app url    https://crm.yourfirm.in
+  database   u123_meetmillions_crm@localhost
+  storage    /home/u123456789/mm-storage
+```
+
+If any of those lines is wrong or missing, the matching environment variable
+is wrong.
