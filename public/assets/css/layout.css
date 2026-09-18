@@ -367,3 +367,15 @@
 
 /* Wide screens: let the content breathe rather than stretch edge to edge. */
 @media (min-width: 1700px) { .mm-page { padding-left: var(--mm-space-8); padding-right: var(--mm-space-8); } }
+
+/* The sidebar's counter. A plain flex-shrink left it as unstyled text beside
+   the label; it needs to read as a count. */
+.mm-nav-item__badge {
+  flex-shrink: 0; min-width: 20px; height: 18px; padding: 0 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--mm-radius-pill);
+  background: var(--mm-bg-surface-3); color: var(--mm-text-secondary);
+  font-size: var(--mm-text-2xs); font-weight: var(--mm-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+.mm-nav-item.is-active .mm-nav-item__badge { background: var(--mm-primary-soft); color: var(--mm-primary); }

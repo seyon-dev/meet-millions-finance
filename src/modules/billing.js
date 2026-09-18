@@ -278,6 +278,47 @@ router.post('/subscription/cancel', async (ctx) => {
   }, { ctx });
 }, { permission: 'subscriptions.manage' });
 
+/**
+ * Undo a pending cancellation.
+ *
+ * Its own endpoint rather than a re-selection of the current plan: changing
+ * plan restarts the billing period and issues an invoice, neither of which is
+ * what somebody who simply changed their mind is asking for.
+ */
+router.post('/subscription/resume', async (ctx) => {
+  const scope = scopeFor(ctx);
+  const subscription = await scope.rawOne(
+    `SELECT * FROM subscriptions WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 1`, [ctx.tenantId]);
+  if (!subscription) throw new NotFoundError('Subscription');
+
+  if (subscription.status === 'cancelled') {
+    throw new ConflictError(
+      'This subscription has already ended. Choose a plan to start again.');
+  }
+  if (!subscription.cancel_at_period_end) {
+    return ok({ subscription, message: 'This subscription was not cancelled.' }, { ctx });
+  }
+
+  await scope.update('subscriptions', subscription.id, {
+    cancel_at_period_end: 0,
+    cancelled_at: null,
+    cancellation_reason: null,
+    auto_renew: 1,
+  });
+
+  await audit(ctx, {
+    action: 'billing.plan_changed', category: 'billing', severity: 'notice',
+    entityType: 'subscription', entityId: subscription.id,
+    newValue: { resumed: true },
+  });
+
+  const updated = await scope.first('subscriptions', { id: subscription.id });
+  return ok({
+    subscription: updated,
+    message: `Kept. It renews on ${String(updated.current_period_end).slice(0, 10)} as normal.`,
+  }, { ctx });
+}, { permission: 'subscriptions.manage' });
+
 // ---------------------------------------------------------------------------
 // Invoices
 // ---------------------------------------------------------------------------

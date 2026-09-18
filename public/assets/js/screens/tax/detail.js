@@ -56,7 +56,7 @@ function build(data, reload) {
               href: `/reports?computationId=${c.id}&clientId=${c.clientId}`,
             })
           : null,
-        c.status === 'draft' && session.can('tax.compute')
+        c.status === 'draft' && session.can('tax.calculate')
           ? button('Finalise', { variant: 'primary', icon: 'stamp', onClick: () => finalise(c, reload) })
           : null),
     }),

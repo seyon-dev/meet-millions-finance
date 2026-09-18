@@ -663,7 +663,21 @@
 .mm-iconbtn:hover:not(:disabled) { background: var(--mm-bg-hover); color: var(--mm-text-primary); }
 .mm-iconbtn:disabled { opacity: 0.4; }
 .mm-iconbtn--sm { width: 26px; height: 26px; border-radius: var(--mm-radius-sm); }
-.mm-iconbtn__badge { position: absolute; top: 3px; right: 3px; }
+/* The count on a bell or a tab. Positioned over the icon's top-right corner
+   and given a shape of its own — with only a position it rendered as a bare
+   sliver of colour with no number in it. */
+.mm-iconbtn__badge {
+  position: absolute; top: 2px; right: 2px;
+  min-width: 17px; height: 17px; padding: 0 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--mm-radius-pill);
+  background: var(--mm-primary); color: #fff;
+  font-size: var(--mm-text-2xs); font-weight: var(--mm-weight-semibold);
+  font-variant-numeric: tabular-nums; line-height: 1;
+  border: 2px solid var(--mm-bg-surface);
+}
+.mm-iconbtn__badge.is-urgent { background: var(--mm-danger); }
+.mm-iconbtn__badge[hidden] { display: none; }
 
 .mm-empty-cell { color: var(--mm-text-disabled); }
 

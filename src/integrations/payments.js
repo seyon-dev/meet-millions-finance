@@ -165,7 +165,11 @@ export class StripeProvider extends PaymentProvider {
       key: 'stripe',
       name: 'Stripe',
       requiredKeys: ['STRIPE_SECRET_KEY'],
-      optionalKeys: ['STRIPE_WEBHOOK_SECRET'],
+      // The publishable key is public by design — it is what the browser's
+      // payment form is created with. Without it a PaymentIntent cannot be
+      // confirmed client-side, so a checkout would be created and then have
+      // nowhere to go.
+      optionalKeys: ['STRIPE_WEBHOOK_SECRET', 'STRIPE_PUBLISHABLE_KEY'],
       env,
       docsUrl: 'https://stripe.com/docs/api',
     });
@@ -199,7 +203,12 @@ export class StripeProvider extends PaymentProvider {
       amountPaise: res.body.amount,
       currency: res.body.currency,
       status: res.body.status,
-      checkout: { provider: 'stripe', clientSecret: res.body.client_secret, paymentIntentId: res.body.id },
+      checkout: {
+        provider: 'stripe',
+        clientSecret: res.body.client_secret,
+        paymentIntentId: res.body.id,
+        publishableKey: this.env.STRIPE_PUBLISHABLE_KEY ?? null,
+      },
     }, { providerId: res.body.id, raw: res.body });
   }
 

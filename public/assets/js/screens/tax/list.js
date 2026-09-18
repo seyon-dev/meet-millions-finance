@@ -62,7 +62,7 @@ export default async function taxScreen({ query }) {
     ].filter(Boolean),
     toolbar: ({ refresh }) => [
       button('Reconciliation', { variant: 'ghost', icon: 'compass', href: '/tax/reconciliation' }),
-      session.can('tax.compute')
+      session.can('tax.calculate')
         ? button('Run a computation', {
             variant: 'primary', icon: 'calculator',
             onClick: () => runComputation(clients, refresh),

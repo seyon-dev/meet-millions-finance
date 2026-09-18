@@ -46,7 +46,7 @@ export default async function tasksScreen({ query }) {
         mine: mineOnly ? 'true' : undefined,
         pageSize: 200,
       });
-      render(boardHost, board(data ?? [], meta.board ?? [], load));
+      render(boardHost, board(data ?? [], meta.board ?? [], load, { mineOnly, showEveryone }));
     } catch (err) {
       render(boardHost, errorState(err, { onRetry: load }));
     }
@@ -61,6 +61,14 @@ export default async function tasksScreen({ query }) {
       : Promise.resolve([]),
   ]);
 
+  function toggleScope() {
+    mineOnly = !mineOnly;
+    router.setQuery({ mine: mineOnly ? null : 'all' });
+    router.go(window.location.pathname + window.location.search);
+  }
+
+  const showEveryone = () => { if (mineOnly) toggleScope(); };
+
   page.append(
     pageHead({
       title: 'Tasks',
@@ -69,13 +77,9 @@ export default async function tasksScreen({ query }) {
         button(mineOnly ? 'Show everyone’s' : 'Show only mine', {
           variant: 'ghost',
           icon: 'users',
-          onClick: () => {
-            mineOnly = !mineOnly;
-            router.setQuery({ mine: mineOnly ? null : 'all' });
-            router.go(window.location.pathname + window.location.search);
-          },
+          onClick: toggleScope,
         }),
-        session.can('tasks.create')
+        session.can('tasks.manage')
           ? button('New task', {
               variant: 'primary', icon: 'plus',
               onClick: () => createTask(people, clients, load),
@@ -88,17 +92,21 @@ export default async function tasksScreen({ query }) {
   return page;
 }
 
-function board(tasks, counts, reload) {
+function board(tasks, counts, reload, { mineOnly, showEveryone }) {
   const byStatus = new Map(COLUMNS.map(c => [c.key, []]));
   for (const task of tasks) {
     if (byStatus.has(task.status)) byStatus.get(task.status).push(task);
   }
 
   if (!tasks.length) {
+    // "No tasks" on its own is misleading when the filter is the reason.
     return emptyState({
-      title: 'No tasks',
-      message: 'Tasks are created here, and automatically from missed calls, overdue filings and rejected documents.',
+      title: mineOnly ? 'Nothing assigned to you' : 'No tasks',
+      message: mineOnly
+        ? 'Your colleagues may have work in flight. Tasks are also created automatically from missed calls, overdue filings and rejected documents.'
+        : 'Tasks are created here, and automatically from missed calls, overdue filings and rejected documents.',
       icon: 'list',
+      action: mineOnly ? { label: 'Show everyone’s', onClick: showEveryone } : null,
     });
   }
 
@@ -108,7 +116,7 @@ function board(tasks, counts, reload) {
     ...COLUMNS.map(column => el('section.mm-board__col', {
       'data-status': column.key,
       onDragover: (e) => {
-        if (!session.can('tasks.update')) return;
+        if (!session.can('tasks.manage')) return;
         e.preventDefault();
         e.currentTarget.classList.add('is-over');
       },
@@ -142,7 +150,7 @@ function board(tasks, counts, reload) {
 }
 
 function taskCard(task, reload) {
-  const draggable = session.can('tasks.update');
+  const draggable = session.can('tasks.manage');
 
   return el('article.mm-taskcard', {
     class: task.overdue ? 'is-overdue' : '',
@@ -216,14 +224,14 @@ async function openTask(task, reload) {
             el('span.mm-kv__k', { text: 'Created' }),
             el('span.mm-kv__v', { text: fmt.dateTime(task.createdAt) }))),
 
-        session.can('tasks.update')
+        session.can('tasks.manage')
           ? frag(
               el('div.mm-grid.mm-grid-3.mm-gap-3',
                 el('div.mm-field', el('label.mm-field__label', { text: 'Status' }), status),
                 el('div.mm-field', el('label.mm-field__label', { text: 'Priority' }), priority),
                 el('div.mm-field', el('label.mm-field__label', { text: 'Due' }), due)),
               el('div.mm-row.mm-gap-2.mm-mt-4',
-                session.can('tasks.delete')
+                session.can('tasks.manage')
                   ? el('button.mm-btn.mm-btn--ghost.mm-btn--danger-text', {
                       type: 'button', text: 'Delete', onClick: () => close({ action: 'delete' }),
                     })

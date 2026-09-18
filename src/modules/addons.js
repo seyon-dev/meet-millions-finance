@@ -81,6 +81,10 @@ router.get('/', async (ctx) => {
         icon: r.icon,
         accent: r.accent,
         requiresCredentials: !!r.requires_credentials,
+        // The calling system is catalogued with the add-ons but is not one of
+        // the thirty. The interface needs to know which is which, or its card
+        // count and its stated total disagree.
+        isSystemModule: r.number > 30,
         // Live state
         status: subscription?.status ?? 'inactive',
         isActive: subscription?.status === 'active' || subscription?.status === 'trialing',

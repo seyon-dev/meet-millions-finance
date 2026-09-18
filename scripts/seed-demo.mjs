@@ -376,6 +376,179 @@ export async function seedDemoData(env) {
     });
   }
 
+  // ---- The working week: tasks, tickets, leads, chat and the calendar -----
+  // These exist so every screen has something honest to show. Without them a
+  // demonstration ends at the first empty board, and an empty board teaches
+  // nobody what the product does.
+  const executive = executives[0] ?? user.id;
+
+  const TASKS = [
+    { title: 'Chase the missing bank statement for March', client: 0, status: 'todo', priority: 'high', due: 1, type: 'follow_up', assignee: executive },
+    { title: 'Reconcile GSTR-2B against the purchase register', client: 0, status: 'in_progress', priority: 'normal', due: 3, type: 'reconciliation', assignee: executive },
+    { title: 'Waiting on the client to confirm the GSTIN correction', client: 1, status: 'blocked', priority: 'high', due: -1, type: 'follow_up', assignee: executive },
+    { title: 'Review the September GST computation before filing', client: 0, status: 'review', priority: 'urgent', due: 2, type: 'filing', assignee: user.id },
+    { title: 'Send the signed engagement letter to the new client', client: 4, status: 'todo', priority: 'normal', due: 5, type: 'onboarding', assignee: user.id },
+    { title: 'Collect the outstanding invoice from Northline', client: 1, status: 'todo', priority: 'normal', due: 7, type: 'collection', assignee: executive },
+    { title: 'File GSTR-1 for Vantara Foods', client: 2, status: 'done', priority: 'normal', due: -3, type: 'filing', assignee: executive },
+  ];
+
+  for (const task of TASKS) {
+    const entry = created[task.client];
+    await db.insert('tasks', {
+      id: ID.task(),
+      tenant_id: tenant.id,
+      company_id: entry.company.id,
+      client_id: entry.client.id,
+      filing_period_id: entry.period.id,
+      title: task.title,
+      type: task.type,
+      status: task.status,
+      priority: task.priority,
+      assigned_to: task.assignee,
+      created_by: user.id,
+      due_at: addDays(task.due),
+      completed_at: task.status === 'done' ? addDays(task.due) : null,
+      created_at: addDays(-4),
+      updated_at: addDays(-1),
+    });
+  }
+
+  const TICKETS = [
+    {
+      subject: 'Cannot upload a 30MB scanned ledger',
+      description: 'The upload stops at about 80% every time. The file is a single PDF of about 30MB scanned from our accounts ledger.',
+      category: 'technical', priority: 'high', status: 'open', client: 0,
+    },
+    {
+      subject: 'Invoice MM/2026-27/0002 shows the wrong GSTIN',
+      description: 'Our GSTIN on the invoice is the old one from before we moved offices. Could this be corrected and reissued?',
+      category: 'billing', priority: 'normal', status: 'in_progress', client: 1,
+    },
+    {
+      subject: 'Request: add a second login for our accounts assistant',
+      description: 'We would like our accounts assistant to upload documents without sharing my login.',
+      category: 'account', priority: 'low', status: 'waiting_internal', client: 3,
+    },
+  ];
+
+  for (const [i, ticket] of TICKETS.entries()) {
+    const entry = created[ticket.client];
+    await db.insert('support_tickets', {
+      id: ID.ticket(),
+      tenant_id: tenant.id,
+      client_id: entry.client.id,
+      company_id: entry.company.id,
+      ticket_no: `TKT-${String(i + 1).padStart(5, '0')}`,
+      subject: ticket.subject,
+      description: ticket.description,
+      category: ticket.category,
+      priority: ticket.priority,
+      status: ticket.status,
+      raised_by: entry.portalUser?.id ?? null,
+      assigned_to: ticket.status === 'open' ? null : executive,
+      channel: 'portal',
+      first_response_at: ticket.status === 'open' ? null : addDays(-i),
+      sla_due_at: addHours(ticket.priority === 'high' ? 8 : 24),
+      message_count: ticket.status === 'open' ? 1 : 2,
+      created_at: addDays(-i - 1),
+      updated_at: addDays(-i),
+    });
+  }
+
+  const LEADS = [
+    { fullName: 'Harish Venkatesh', company: 'Anvaya Exports', city: 'Coimbatore', source: 'website_form', status: 'new', message: 'Looking for monthly GST filing for a small export business.' },
+    { fullName: 'Fatima Sheikh', company: 'Blue Meridian Interiors', city: 'Hyderabad', source: 'meta_ads', status: 'contacted', message: 'Need help with TDS returns and bookkeeping.' },
+    { fullName: 'Deepak Chandra', company: 'Chandra & Sons Hardware', city: 'Chennai', source: 'referral', status: 'qualified', message: 'Referred by Radiant Traders. Two GSTINs across two states.' },
+    { fullName: 'Ritu Malhotra', company: 'Saffron Studio', city: 'Pune', source: 'google_form', status: 'new', message: 'Freelance design studio, first year of GST registration.' },
+  ];
+
+  for (const [i, lead] of LEADS.entries()) {
+    await db.insert('leads', {
+      id: ID.lead(),
+      tenant_id: tenant.id,
+      source: lead.source,
+      full_name: lead.fullName,
+      email: `${lead.fullName.split(' ')[0].toLowerCase()}@${lead.company.split(' ')[0].toLowerCase()}.example`,
+      phone: `98${String(45012000 + i * 137).padStart(8, '0')}`,
+      company_name: lead.company,
+      city: lead.city,
+      message: lead.message,
+      status: lead.status,
+      assigned_to: lead.status === 'new' ? null : manager,
+      assigned_at: lead.status === 'new' ? null : addDays(-i),
+      score: 40 + i * 15,
+      last_contacted_at: lead.status === 'new' ? null : addDays(-i),
+      created_at: addDays(-i - 1),
+      updated_at: addDays(-i),
+    });
+  }
+
+  // One WhatsApp conversation, so the inbox is not an empty shell.
+  const threadId = ID.thread();
+  await db.insert('chat_threads', {
+    id: threadId,
+    tenant_id: tenant.id,
+    channel: 'whatsapp',
+    client_id: created[0].client.id,
+    phone: `+91${CLIENTS[0].contactPhone}`,
+    display_name: CLIENTS[0].contactName,
+    assigned_to: executive,
+    status: 'open',
+    unread_count: 1,
+    last_message_at: addHours(-2),
+    last_message_preview: 'Sending the corrected invoice now.',
+    created_at: addDays(-2),
+    updated_at: addHours(-2),
+  });
+
+  const CHAT = [
+    { direction: 'outbound', body: 'Good morning Priya — the purchase invoice from Anand Traders is missing its GSTIN. Could you send a corrected copy?', at: addDays(-2) },
+    { direction: 'inbound', body: 'Morning. Let me check with them and come back to you.', at: addDays(-1) },
+    { direction: 'inbound', body: 'Sending the corrected invoice now.', at: addHours(-2) },
+  ];
+
+  for (const message of CHAT) {
+    await db.insert('chat_messages', {
+      id: ID.message(),
+      tenant_id: tenant.id,
+      thread_id: threadId,
+      direction: message.direction,
+      type: 'text',
+      body: message.body,
+      sent_by: message.direction === 'outbound' ? executive : null,
+      status: message.direction === 'outbound' ? 'delivered' : 'received',
+      created_at: message.at,
+    });
+  }
+
+  const EVENTS = [
+    { title: 'GSTR-1 filing deadline', kind: 'filing_deadline', client: 0, inDays: 3, hours: 0, allDay: 1 },
+    { title: 'Quarterly review with Northline Textiles', kind: 'meeting', client: 1, inDays: 5, hours: 11 },
+    { title: 'Site visit — Kestrel Logistics warehouse', kind: 'visit', client: 3, inDays: 8, hours: 15 },
+    { title: 'Call Solaris Apparel about onboarding documents', kind: 'call', client: 4, inDays: 1, hours: 16 },
+  ];
+
+  for (const event of EVENTS) {
+    const start = event.allDay
+      ? `${dayKey(addDays(event.inDays))}T00:00:00.000Z`
+      : addHours(event.inDays * 24 + event.hours);
+    await db.insert('calendar_events', {
+      id: ID.event(),
+      tenant_id: tenant.id,
+      client_id: created[event.client].client.id,
+      owner_id: event.kind === 'meeting' ? manager : executive,
+      title: event.title,
+      kind: event.kind,
+      starts_at: start,
+      ends_at: event.allDay ? start : addHours(event.inDays * 24 + event.hours + 1),
+      all_day: event.allDay ?? 0,
+      status: 'confirmed',
+      sync_status: 'local',
+      created_at: addDays(-2),
+      updated_at: addDays(-2),
+    });
+  }
+
   // ---- Refresh the derived period counters --------------------------------
   const { refreshFilingPeriod } = await import('../src/services/workflow.js');
   for (const entry of created) {
