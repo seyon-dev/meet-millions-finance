@@ -81,8 +81,19 @@ router.get('/threads/:id', async (ctx) => {
   const templates = await scope.all('whatsapp_templates', { approval_status: 'approved' },
     { order: 'name ASC', limit: 100 });
 
+  const assignee = thread.assigned_to
+    ? await scope.first('users', { id: thread.assigned_to }, 'id, full_name')
+    : null;
+
   return ok({
-    thread: toThread(thread),
+    // The list query joins these names; this read fetches the rows, so the
+    // same fields are filled in rather than left null on a detail.
+    thread: {
+      ...toThread(thread),
+      clientName: client?.display_name ?? null,
+      clientCode: client?.client_code ?? null,
+      assigneeName: assignee?.full_name ?? null,
+    },
     messages: messages.map(toMessage),
     client: client ? {
       id: client.id, displayName: client.display_name, clientCode: client.client_code,

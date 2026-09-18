@@ -526,6 +526,7 @@ export async function seedDemoData(env) {
     { title: 'Quarterly review with Northline Textiles', kind: 'meeting', client: 1, inDays: 5, hours: 11 },
     { title: 'Site visit — Kestrel Logistics warehouse', kind: 'visit', client: 3, inDays: 8, hours: 15 },
     { title: 'Call Solaris Apparel about onboarding documents', kind: 'call', client: 4, inDays: 1, hours: 16 },
+    { title: 'Partners’ review of the month’s filings', kind: 'meeting', client: 0, inDays: 2, hours: 10, owner: 'admin' },
   ];
 
   for (const event of EVENTS) {
@@ -536,7 +537,7 @@ export async function seedDemoData(env) {
       id: ID.event(),
       tenant_id: tenant.id,
       client_id: created[event.client].client.id,
-      owner_id: event.kind === 'meeting' ? manager : executive,
+      owner_id: event.owner === 'admin' ? user.id : (event.kind === 'meeting' ? manager : executive),
       title: event.title,
       kind: event.kind,
       starts_at: start,

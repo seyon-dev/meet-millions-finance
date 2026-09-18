@@ -704,3 +704,45 @@
 .mm-chart--donut { width: auto; height: auto; flex-shrink: 0; }
 .mm-split__detail { min-width: 0; display: flex; flex-direction: column; gap: var(--mm-space-4); }
 .mm-addon__ticks { padding: var(--mm-space-3) var(--mm-space-4) 0; }
+
+/* A satisfaction rating, chosen by clicking. */
+.mm-rate__star { background: none; border: 0; padding: 2px; cursor: pointer; color: var(--mm-text-disabled); }
+.mm-rate__star.is-chosen { color: var(--mm-success); }
+.mm-rate__star:focus-visible { outline: 2px solid var(--mm-brand); outline-offset: 2px; border-radius: var(--mm-radius-sm); }
+
+/* --------------------------------------------------------------------------
+   Calendar
+   -------------------------------------------------------------------------- */
+.mm-calendar { padding: var(--mm-space-3); }
+.mm-calendar__head { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; margin-bottom: var(--mm-space-2); }
+.mm-calendar__dayname { font-size: var(--mm-text-2xs); text-transform: uppercase; letter-spacing: var(--mm-tracking-caps); color: var(--mm-text-tertiary); text-align: center; }
+.mm-calendar__grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.mm-calendar__cell {
+  min-height: 92px; padding: var(--mm-space-1); display: flex; flex-direction: column; gap: 2px;
+  border-radius: var(--mm-radius-sm); background: var(--mm-bg-surface-2); border: 1px solid transparent;
+}
+.mm-calendar__cell.is-empty { background: transparent; }
+.mm-calendar__cell.is-weekend { background: var(--mm-bg-inset); }
+.mm-calendar__cell.is-today { border-color: var(--mm-primary); }
+.mm-calendar__date { font-size: var(--mm-text-xs); color: var(--mm-text-tertiary); font-variant-numeric: tabular-nums; }
+.mm-calendar__cell.is-today .mm-calendar__date { color: var(--mm-primary); font-weight: var(--mm-weight-semibold); }
+.mm-calendar__event {
+  display: flex; align-items: center; gap: 3px; width: 100%; text-align: left;
+  padding: 2px 4px; border-radius: 3px; border: 0; cursor: pointer;
+  font-size: var(--mm-text-2xs); line-height: 1.3;
+  background: var(--mm-primary-soft); color: var(--mm-primary);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.mm-calendar__event .mm-icon { width: 11px; height: 11px; flex-shrink: 0; }
+.mm-calendar__event > span { overflow: hidden; text-overflow: ellipsis; }
+.mm-calendar__event--deadline { background: var(--mm-warning-soft); color: var(--mm-warning); }
+.mm-calendar__event--visit { background: var(--mm-info-soft); color: var(--mm-info); }
+.mm-calendar__event--call { background: var(--mm-success-soft); color: var(--mm-success); }
+.mm-calendar__more { font-size: var(--mm-text-2xs); color: var(--mm-text-tertiary); padding-left: 4px; }
+
+/* A 7×6 grid cannot be read on a phone. Below this width the agenda beside it
+   is the calendar, and the whole month card steps aside — hiding only the grid
+   would leave an empty card with a month navigator in it. */
+@media (max-width: 860px) {
+  .mm-card--month { display: none; }
+}
