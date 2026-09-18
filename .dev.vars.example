@@ -1,0 +1,128 @@
+# =============================================================================
+# Meet Millions Finance CRM — environment template
+# =============================================================================
+# Copy to `.dev.vars` for local `wrangler dev`, and register each value in
+# production with:  wrangler secret put <NAME>
+#
+# NEVER commit real values. This file contains placeholders only.
+# Every integration below degrades gracefully to "Not Connected" when its
+# credentials are absent — the CRM core keeps working without any of them.
+# =============================================================================
+
+# ---- Platform (required) ----------------------------------------------------
+# 32+ random bytes, base64. Signs session tokens and CSRF tokens.
+#   openssl rand -base64 48
+AUTH_SECRET=replace-with-openssl-rand-base64-48
+# Encrypts TOTP seeds and integration credentials stored in D1.
+ENCRYPTION_KEY=replace-with-openssl-rand-base64-32
+# Signs private R2 document download URLs.
+FILE_SIGNING_SECRET=replace-with-openssl-rand-base64-32
+
+# ---- Email — Amazon SES (Integration Stack: transactional & reports) --------
+SES_REGION=ap-south-1
+SES_ACCESS_KEY_ID=
+SES_SECRET_ACCESS_KEY=
+SES_FROM_ADDRESS=no-reply@meetmillionscrm.in
+SES_FROM_NAME=Meet Millions Finance CRM
+
+# ---- SMS — MSG91 (DLT registered, India) -----------------------------------
+MSG91_AUTH_KEY=
+MSG91_SENDER_ID=MMFCRM
+MSG91_ROUTE=4
+MSG91_DLT_TE_ID=
+
+# ---- WhatsApp — Meta WhatsApp Cloud API ------------------------------------
+WHATSAPP_PHONE_NUMBER_ID=
+WHATSAPP_BUSINESS_ACCOUNT_ID=
+WHATSAPP_ACCESS_TOKEN=
+WHATSAPP_VERIFY_TOKEN=
+WHATSAPP_APP_SECRET=
+
+# ---- Push — Firebase Cloud Messaging (mobile app) --------------------------
+FCM_PROJECT_ID=
+FCM_CLIENT_EMAIL=
+FCM_PRIVATE_KEY=
+APNS_KEY_ID=
+APNS_TEAM_ID=
+APNS_PRIVATE_KEY=
+
+# ---- Meta Lead Ads — Graph API ---------------------------------------------
+META_APP_ID=
+META_APP_SECRET=
+META_PAGE_ACCESS_TOKEN=
+META_LEADGEN_VERIFY_TOKEN=
+
+# ---- Google (Sheets / Forms / Drive / Calendar / Vision / Speech) ----------
+GOOGLE_OAUTH_CLIENT_ID=
+GOOGLE_OAUTH_CLIENT_SECRET=
+GOOGLE_OAUTH_REDIRECT_URI=https://app.meetmillionscrm.in/api/integrations/google/callback
+GOOGLE_SERVICE_ACCOUNT_EMAIL=
+GOOGLE_SERVICE_ACCOUNT_KEY=
+GOOGLE_VISION_API_KEY=
+GOOGLE_SPEECH_API_KEY=
+
+# ---- Microsoft (OneDrive / SharePoint / Outlook Calendar) ------------------
+MS_GRAPH_CLIENT_ID=
+MS_GRAPH_CLIENT_SECRET=
+MS_GRAPH_TENANT_ID=
+MS_GRAPH_REDIRECT_URI=https://app.meetmillionscrm.in/api/integrations/microsoft/callback
+
+# ---- Dropbox ----------------------------------------------------------------
+DROPBOX_APP_KEY=
+DROPBOX_APP_SECRET=
+DROPBOX_REDIRECT_URI=https://app.meetmillionscrm.in/api/integrations/dropbox/callback
+
+# ---- LLM — Claude API (Anthropic): GST assistant, insights, call AI --------
+ANTHROPIC_API_KEY=
+ANTHROPIC_MODEL=claude-sonnet-5
+
+# ---- Payments ---------------------------------------------------------------
+# Razorpay is the Integration Stack default (UPI, cards, net banking).
+RAZORPAY_KEY_ID=
+RAZORPAY_KEY_SECRET=
+RAZORPAY_WEBHOOK_SECRET=
+# Optional alternate gateways — the provider abstraction supports all four.
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+CASHFREE_APP_ID=
+CASHFREE_SECRET_KEY=
+CASHFREE_WEBHOOK_SECRET=
+PHONEPE_MERCHANT_ID=
+PHONEPE_SALT_KEY=
+PHONEPE_SALT_INDEX=1
+
+# ---- e-Sign — Digio / Leegality (Aadhaar e-Sign + DSC) ---------------------
+ESIGN_PROVIDER=digio
+DIGIO_CLIENT_ID=
+DIGIO_CLIENT_SECRET=
+LEEGALITY_AUTH_TOKEN=
+ESIGN_WEBHOOK_SECRET=
+
+# ---- Cloud Telephony — Exotel default; 7 providers supported ---------------
+TELEPHONY_PROVIDER=exotel
+EXOTEL_SID=
+EXOTEL_API_KEY=
+EXOTEL_API_TOKEN=
+EXOTEL_SUBDOMAIN=api.exotel.com
+EXOTEL_CALLER_ID=
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_CALLER_ID=
+PLIVO_AUTH_ID=
+PLIVO_AUTH_TOKEN=
+PLIVO_CALLER_ID=
+KNOWLARITY_API_KEY=
+KNOWLARITY_SR_NUMBER=
+MYOPERATOR_API_KEY=
+MYOPERATOR_COMPANY_ID=
+RINGCENTRAL_CLIENT_ID=
+RINGCENTRAL_CLIENT_SECRET=
+RINGCENTRAL_JWT=
+AIRCALL_API_ID=
+AIRCALL_API_TOKEN=
+TELEPHONY_WEBHOOK_SECRET=
+
+# ---- White Label — Cloudflare API for custom domain automation -------------
+CLOUDFLARE_API_TOKEN=
+CLOUDFLARE_ZONE_ID=
+CLOUDFLARE_ACCOUNT_ID=

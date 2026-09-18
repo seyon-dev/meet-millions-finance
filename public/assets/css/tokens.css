@@ -1,0 +1,337 @@
+/* ==========================================================================
+   Meet Millions Finance CRM — Design Tokens
+   --------------------------------------------------------------------------
+   A single source of truth for colour, type, space, radius, elevation and
+   motion. Dark is the product's native theme (deep navy / midnight base with
+   electric blue and cyan accents); light is a separately authored palette,
+   not an inversion — every semantic token is redefined with its own value so
+   contrast and hierarchy survive the switch.
+
+   Naming: --mm-<category>-<role>-<variant>
+   ========================================================================== */
+
+:root {
+  /* ---- Brand ramp — electric blue -------------------------------------- */
+  --mm-blue-50:  #EAF1FF;
+  --mm-blue-100: #D0E0FF;
+  --mm-blue-200: #A6C4FF;
+  --mm-blue-300: #7AA4FF;
+  --mm-blue-400: #4E85FF;
+  --mm-blue-500: #2F6BFF;   /* primary */
+  --mm-blue-600: #1E52E0;
+  --mm-blue-700: #163EB0;
+  --mm-blue-800: #112F85;
+  --mm-blue-900: #0C2160;
+
+  /* ---- Accent ramp — cyan ---------------------------------------------- */
+  --mm-cyan-100: #CFFAFE;
+  --mm-cyan-300: #67E8F9;
+  --mm-cyan-400: #38DDEF;
+  --mm-cyan-500: #22D3EE;
+  --mm-cyan-600: #0EA5C6;
+  --mm-cyan-700: #0C7F99;
+
+  /* ---- Accent ramp — violet (reserved for AI surfaces) ------------------ */
+  --mm-violet-200: #DDD6FE;
+  --mm-violet-400: #A78BFA;
+  --mm-violet-500: #8B5CF6;
+  --mm-violet-600: #7C3AED;
+  --mm-violet-700: #6428CE;
+
+  /* ---- Neutral ramp — navy-tinted, never pure grey ---------------------- */
+  --mm-navy-25:  #F6F8FC;
+  --mm-navy-50:  #EEF2F9;
+  --mm-navy-100: #E1E8F4;
+  --mm-navy-200: #C9D4E8;
+  --mm-navy-300: #A3B2CE;
+  --mm-navy-400: #7386AA;
+  --mm-navy-500: #51648A;
+  --mm-navy-600: #3A4B6E;
+  --mm-navy-650: #2C3A59;
+  --mm-navy-700: #1F2B44;
+  --mm-navy-800: #152035;
+  --mm-navy-850: #111A2E;
+  --mm-navy-900: #0D1526;
+  --mm-navy-950: #070B16;
+
+  /* ---- Status ramps ---------------------------------------------------- */
+  --mm-green-300: #86EFAC;
+  --mm-green-500: #22C55E;
+  --mm-green-600: #16A34A;
+  --mm-green-700: #15803D;
+
+  --mm-amber-300: #FCD34D;
+  --mm-amber-500: #F59E0B;
+  --mm-amber-600: #D97706;
+  --mm-amber-700: #B45309;
+
+  --mm-red-300: #FCA5A5;
+  --mm-red-500: #EF4444;
+  --mm-red-600: #DC2626;
+  --mm-red-700: #B91C1C;
+
+  /* ---- Typography ------------------------------------------------------- */
+  --mm-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text",
+                  "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --mm-font-display: "Inter Display", "Inter", -apple-system, BlinkMacSystemFont,
+                  "Segoe UI Variable Display", "Segoe UI", Roboto, sans-serif;
+  --mm-font-mono: "JetBrains Mono", "SF Mono", ui-monospace, SFMono-Regular, Menlo,
+                  Consolas, "Liberation Mono", monospace;
+
+  --mm-text-2xs: 0.6875rem;  /* 11 */
+  --mm-text-xs:  0.75rem;    /* 12 */
+  --mm-text-sm:  0.8125rem;  /* 13 */
+  --mm-text-base:0.875rem;   /* 14 — product default */
+  --mm-text-md:  0.9375rem;  /* 15 */
+  --mm-text-lg:  1.0625rem;  /* 17 */
+  --mm-text-xl:  1.25rem;    /* 20 */
+  --mm-text-2xl: 1.5rem;     /* 24 */
+  --mm-text-3xl: 1.875rem;   /* 30 */
+  --mm-text-4xl: 2.25rem;    /* 36 */
+  --mm-text-5xl: 3rem;       /* 48 */
+
+  --mm-leading-tight: 1.18;
+  --mm-leading-snug: 1.35;
+  --mm-leading-normal: 1.55;
+  --mm-leading-relaxed: 1.7;
+
+  --mm-weight-regular: 400;
+  --mm-weight-medium: 500;
+  --mm-weight-semibold: 600;
+  --mm-weight-bold: 700;
+
+  --mm-tracking-tight: -0.02em;
+  --mm-tracking-snug: -0.011em;
+  --mm-tracking-normal: 0;
+  --mm-tracking-wide: 0.04em;
+  --mm-tracking-caps: 0.09em;
+
+  /* ---- Spacing — strict 8px system with 4px half-steps ------------------ */
+  --mm-space-0: 0;
+  --mm-space-1: 0.25rem;  /*  4 */
+  --mm-space-2: 0.5rem;   /*  8 */
+  --mm-space-3: 0.75rem;  /* 12 */
+  --mm-space-4: 1rem;     /* 16 */
+  --mm-space-5: 1.5rem;   /* 24 */
+  --mm-space-6: 2rem;     /* 32 */
+  --mm-space-7: 2.5rem;   /* 40 */
+  --mm-space-8: 3rem;     /* 48 */
+  --mm-space-9: 4rem;     /* 64 */
+  --mm-space-10: 5rem;    /* 80 */
+
+  /* ---- Radius ----------------------------------------------------------- */
+  --mm-radius-xs: 4px;
+  --mm-radius-sm: 6px;
+  --mm-radius-md: 10px;
+  --mm-radius-lg: 14px;
+  --mm-radius-xl: 20px;
+  --mm-radius-2xl: 28px;
+  --mm-radius-pill: 999px;
+
+  /* ---- Layout ----------------------------------------------------------- */
+  --mm-sidebar-w: 256px;
+  --mm-sidebar-w-collapsed: 72px;
+  --mm-topbar-h: 60px;
+  --mm-content-max: 1520px;
+  --mm-mobilenav-h: 60px;
+
+  /* ---- Motion ----------------------------------------------------------- */
+  --mm-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --mm-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --mm-ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --mm-dur-instant: 90ms;
+  --mm-dur-fast: 150ms;
+  --mm-dur-base: 220ms;
+  --mm-dur-slow: 340ms;
+
+  /* ---- Z-index scale ---------------------------------------------------- */
+  --mm-z-base: 1;
+  --mm-z-sticky: 20;
+  --mm-z-sidebar: 40;
+  --mm-z-topbar: 50;
+  --mm-z-dropdown: 60;
+  --mm-z-drawer: 70;
+  --mm-z-modal: 80;
+  --mm-z-callbar: 90;
+  --mm-z-toast: 100;
+}
+
+/* ==========================================================================
+   DARK THEME (default) — deep navy / midnight
+   ========================================================================== */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Surfaces — layered, each step a genuine elevation not a tint of grey */
+  --mm-bg-canvas:      #070B16;
+  --mm-bg-canvas-alt:  #0A1020;
+  --mm-bg-surface:     #0D1526;
+  --mm-bg-surface-2:   #111A2E;
+  --mm-bg-surface-3:   #16223A;
+  --mm-bg-raised:      #1A2742;
+  --mm-bg-inset:       #060A13;
+  --mm-bg-hover:       rgba(122, 164, 255, 0.07);
+  --mm-bg-active:      rgba(122, 164, 255, 0.12);
+  --mm-bg-selected:    rgba(47, 107, 255, 0.16);
+
+  /* Glass — restrained: one blur layer, never stacked */
+  --mm-glass-bg:       rgba(13, 21, 38, 0.72);
+  --mm-glass-border:   rgba(148, 178, 255, 0.12);
+  --mm-glass-blur:     18px;
+
+  /* Borders — hairlines carry the structure, not heavy strokes */
+  --mm-border-subtle:  rgba(148, 178, 255, 0.08);
+  --mm-border-default: rgba(148, 178, 255, 0.13);
+  --mm-border-strong:  rgba(148, 178, 255, 0.22);
+  --mm-border-focus:   var(--mm-blue-400);
+
+  /* Text */
+  --mm-text-primary:   #F2F6FF;
+  --mm-text-secondary: #A9B8D4;
+  --mm-text-tertiary:  #7386AA;
+  --mm-text-disabled:  #4A5B7D;
+  --mm-text-inverse:   #070B16;
+  --mm-text-link:      var(--mm-blue-300);
+
+  /* Brand */
+  --mm-primary:        var(--mm-blue-500);
+  --mm-primary-hover:  var(--mm-blue-400);
+  --mm-primary-active: var(--mm-blue-600);
+  --mm-primary-soft:   rgba(47, 107, 255, 0.15);
+  --mm-primary-text:   #FFFFFF;
+  --mm-accent:         var(--mm-cyan-500);
+  --mm-accent-soft:    rgba(34, 211, 238, 0.14);
+  --mm-ai:             var(--mm-violet-400);
+  --mm-ai-soft:        rgba(139, 92, 246, 0.16);
+
+  /* Status */
+  --mm-success:       var(--mm-green-500);
+  --mm-success-soft:  rgba(34, 197, 94, 0.14);
+  --mm-success-text:  var(--mm-green-300);
+  --mm-warning:       var(--mm-amber-500);
+  --mm-warning-soft:  rgba(245, 158, 11, 0.14);
+  --mm-warning-text:  var(--mm-amber-300);
+  --mm-danger:        var(--mm-red-500);
+  --mm-danger-soft:   rgba(239, 68, 68, 0.14);
+  --mm-danger-text:   var(--mm-red-300);
+  --mm-info:          var(--mm-cyan-500);
+  --mm-info-soft:     rgba(34, 211, 238, 0.13);
+  --mm-info-text:     var(--mm-cyan-300);
+  --mm-neutral-soft:  rgba(148, 178, 255, 0.10);
+  --mm-neutral-text:  var(--mm-navy-300);
+
+  /* Elevation — soft, wide, low-opacity; no hard drop shadows */
+  --mm-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.36);
+  --mm-shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.32), 0 1px 2px rgba(0, 0, 0, 0.30);
+  --mm-shadow-md: 0 8px 24px -6px rgba(0, 0, 0, 0.50), 0 2px 6px rgba(0, 0, 0, 0.30);
+  --mm-shadow-lg: 0 20px 50px -12px rgba(0, 0, 0, 0.62), 0 6px 14px rgba(0, 0, 0, 0.34);
+  --mm-shadow-xl: 0 32px 72px -18px rgba(0, 0, 0, 0.70), 0 10px 24px rgba(0, 0, 0, 0.38);
+  --mm-shadow-glow: 0 0 0 1px rgba(47, 107, 255, 0.34), 0 8px 30px -8px rgba(47, 107, 255, 0.42);
+  --mm-ring-focus: 0 0 0 2px var(--mm-bg-canvas), 0 0 0 4px var(--mm-blue-400);
+
+  /* Charts — a categorical set validated for dark backgrounds */
+  --mm-chart-1: #4E85FF;
+  --mm-chart-2: #22D3EE;
+  --mm-chart-3: #8B5CF6;
+  --mm-chart-4: #34D399;
+  --mm-chart-5: #FBBF24;
+  --mm-chart-6: #FB7185;
+  --mm-chart-7: #A3B2CE;
+  --mm-chart-8: #2DD4BF;
+  --mm-chart-grid: rgba(148, 178, 255, 0.10);
+  --mm-chart-axis: #7386AA;
+
+  /* Signature gradients — used sparingly: logo, hero rule, active nav edge */
+  --mm-gradient-brand: linear-gradient(135deg, #2F6BFF 0%, #22D3EE 100%);
+  --mm-gradient-ai: linear-gradient(135deg, #8B5CF6 0%, #22D3EE 100%);
+  --mm-gradient-surface: linear-gradient(180deg, rgba(47,107,255,0.05) 0%, rgba(47,107,255,0) 60%);
+  --mm-mesh-line: rgba(148, 178, 255, 0.035);
+}
+
+/* ==========================================================================
+   LIGHT THEME — authored independently, matching the proposal's light decks
+   ========================================================================== */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --mm-bg-canvas:      #F6F8FC;
+  --mm-bg-canvas-alt:  #EEF2F9;
+  --mm-bg-surface:     #FFFFFF;
+  --mm-bg-surface-2:   #FBFCFE;
+  --mm-bg-surface-3:   #F3F6FC;
+  --mm-bg-raised:      #FFFFFF;
+  --mm-bg-inset:       #EEF2F9;
+  --mm-bg-hover:       rgba(47, 107, 255, 0.055);
+  --mm-bg-active:      rgba(47, 107, 255, 0.10);
+  --mm-bg-selected:    rgba(47, 107, 255, 0.10);
+
+  --mm-glass-bg:       rgba(255, 255, 255, 0.82);
+  --mm-glass-border:   rgba(17, 38, 80, 0.10);
+  --mm-glass-blur:     16px;
+
+  --mm-border-subtle:  rgba(17, 38, 80, 0.07);
+  --mm-border-default: rgba(17, 38, 80, 0.12);
+  --mm-border-strong:  rgba(17, 38, 80, 0.20);
+  --mm-border-focus:   var(--mm-blue-500);
+
+  --mm-text-primary:   #101A2E;
+  --mm-text-secondary: #46587C;
+  --mm-text-tertiary:  #6B7CA0;
+  --mm-text-disabled:  #A3B2CE;
+  --mm-text-inverse:   #FFFFFF;
+  --mm-text-link:      var(--mm-blue-600);
+
+  --mm-primary:        var(--mm-blue-500);
+  --mm-primary-hover:  var(--mm-blue-600);
+  --mm-primary-active: var(--mm-blue-700);
+  --mm-primary-soft:   rgba(47, 107, 255, 0.10);
+  --mm-primary-text:   #FFFFFF;
+  --mm-accent:         var(--mm-cyan-600);
+  --mm-accent-soft:    rgba(14, 165, 198, 0.11);
+  --mm-ai:             var(--mm-violet-600);
+  --mm-ai-soft:        rgba(124, 58, 237, 0.10);
+
+  --mm-success:       var(--mm-green-600);
+  --mm-success-soft:  rgba(22, 163, 74, 0.11);
+  --mm-success-text:  var(--mm-green-700);
+  --mm-warning:       var(--mm-amber-600);
+  --mm-warning-soft:  rgba(217, 119, 6, 0.12);
+  --mm-warning-text:  var(--mm-amber-700);
+  --mm-danger:        var(--mm-red-600);
+  --mm-danger-soft:   rgba(220, 38, 38, 0.10);
+  --mm-danger-text:   var(--mm-red-700);
+  --mm-info:          var(--mm-cyan-600);
+  --mm-info-soft:     rgba(14, 165, 198, 0.11);
+  --mm-info-text:     var(--mm-cyan-700);
+  --mm-neutral-soft:  rgba(17, 38, 80, 0.06);
+  --mm-neutral-text:  #46587C;
+
+  --mm-shadow-xs: 0 1px 2px rgba(16, 26, 46, 0.06);
+  --mm-shadow-sm: 0 1px 3px rgba(16, 26, 46, 0.08), 0 1px 2px rgba(16, 26, 46, 0.04);
+  --mm-shadow-md: 0 8px 24px -8px rgba(16, 26, 46, 0.14), 0 2px 6px rgba(16, 26, 46, 0.06);
+  --mm-shadow-lg: 0 20px 48px -16px rgba(16, 26, 46, 0.18), 0 6px 14px rgba(16, 26, 46, 0.07);
+  --mm-shadow-xl: 0 32px 68px -20px rgba(16, 26, 46, 0.22), 0 10px 22px rgba(16, 26, 46, 0.08);
+  --mm-shadow-glow: 0 0 0 1px rgba(47, 107, 255, 0.28), 0 8px 26px -10px rgba(47, 107, 255, 0.36);
+  --mm-ring-focus: 0 0 0 2px #FFFFFF, 0 0 0 4px var(--mm-blue-500);
+
+  --mm-chart-1: #2F6BFF;
+  --mm-chart-2: #0EA5C6;
+  --mm-chart-3: #7C3AED;
+  --mm-chart-4: #16A34A;
+  --mm-chart-5: #D97706;
+  --mm-chart-6: #E11D48;
+  --mm-chart-7: #6B7CA0;
+  --mm-chart-8: #0D9488;
+  --mm-chart-grid: rgba(17, 38, 80, 0.09);
+  --mm-chart-axis: #6B7CA0;
+
+  --mm-gradient-brand: linear-gradient(135deg, #2F6BFF 0%, #22D3EE 100%);
+  --mm-gradient-ai: linear-gradient(135deg, #7C3AED 0%, #0EA5C6 100%);
+  --mm-gradient-surface: linear-gradient(180deg, rgba(47,107,255,0.035) 0%, rgba(47,107,255,0) 60%);
+  --mm-mesh-line: rgba(17, 38, 80, 0.032);
+}
+
+/* The theme controller (assets/js/core/theme.js) always sets an explicit
+   data-theme on <html> — from the stored preference, or from the OS when the
+   user has not chosen. Dark above is the fallback if scripting is blocked. */

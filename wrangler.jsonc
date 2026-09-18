@@ -1,0 +1,109 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "meet-millions-finance-crm",
+  "main": "src/index.js",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "observability": { "enabled": true },
+
+  // ---------------------------------------------------------------------
+  // Static assets — the Vanilla JS SPA in /public is served by the Worker.
+  // API requests (/api/*) fall through to the Worker script.
+  // ---------------------------------------------------------------------
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/webhooks/*", "/files/*"]
+  },
+
+  // ---------------------------------------------------------------------
+  // D1 — relational multi-tenant datastore
+  // Replace database_id after `wrangler d1 create meetmillions_crm`
+  // ---------------------------------------------------------------------
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "meetmillions_crm",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "database/migrations"
+    }
+  ],
+
+  // ---------------------------------------------------------------------
+  // R2 — private document storage (client uploads, reports, recordings)
+  // ---------------------------------------------------------------------
+  "r2_buckets": [
+    {
+      "binding": "DOCS",
+      "bucket_name": "meetmillions-crm-documents",
+      "preview_bucket_name": "meetmillions-crm-documents-preview"
+    }
+  ],
+
+  // ---------------------------------------------------------------------
+  // KV — rate limiting counters, short-lived caches, idempotency keys
+  // ---------------------------------------------------------------------
+  "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      "id": "00000000000000000000000000000000",
+      "preview_id": "00000000000000000000000000000000"
+    }
+  ],
+
+  // ---------------------------------------------------------------------
+  // Scheduled jobs — reminders, digests, retention, sync, nightly AI
+  // ---------------------------------------------------------------------
+  "triggers": {
+    "crons": [
+      "*/15 * * * *",
+      "0 3 * * *",
+      "0 9 * * 1"
+    ]
+  },
+
+  // ---------------------------------------------------------------------
+  // Non-secret configuration. Secrets go in `wrangler secret put` / .dev.vars
+  // ---------------------------------------------------------------------
+  "vars": {
+    "APP_NAME": "Meet Millions Finance CRM",
+    "APP_ENV": "development",
+    "APP_URL": "http://localhost:8787",
+    "SESSION_TTL_HOURS": "12",
+    "UPLOAD_MAX_BYTES": "52428800",
+    "UPLOAD_ALLOWED_MIME": "application/pdf,image/jpeg,image/png,application/zip,application/x-zip-compressed,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "AUDIT_RETENTION_DAYS": "2555",
+    "DEMO_MODE": "true"
+  },
+
+  "env": {
+    "production": {
+      "vars": {
+        "APP_NAME": "Meet Millions Finance CRM",
+        "APP_ENV": "production",
+        "APP_URL": "https://app.meetmillionscrm.in",
+        "SESSION_TTL_HOURS": "12",
+        "UPLOAD_MAX_BYTES": "52428800",
+        "UPLOAD_ALLOWED_MIME": "application/pdf,image/jpeg,image/png,application/zip,application/x-zip-compressed,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "AUDIT_RETENTION_DAYS": "2555",
+        "DEMO_MODE": "false"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "meetmillions_crm",
+          "database_id": "00000000-0000-0000-0000-000000000000",
+          "migrations_dir": "database/migrations"
+        }
+      ],
+      "r2_buckets": [
+        { "binding": "DOCS", "bucket_name": "meetmillions-crm-documents" }
+      ],
+      "kv_namespaces": [
+        { "binding": "CACHE", "id": "00000000000000000000000000000000" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "meet-millions-finance-crm",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Meet Millions Finance CRM — cloud-native GST/TDS compliance and workflow platform for accounting firms and finance teams.",
+  "type": "module",
+  "engines": { "node": ">=22.0.0" },
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply meetmillions_crm --local",
+    "db:migrate:remote": "wrangler d1 migrations apply meetmillions_crm --remote",
+    "db:seed:local": "wrangler d1 execute meetmillions_crm --local --file=./database/seed/0001_demo_seed.sql",
+    "db:seed:remote": "wrangler d1 execute meetmillions_crm --remote --file=./database/seed/0001_demo_seed.sql",
+    "db:reset:local": "node scripts/reset-local.mjs",
+    "seed:build": "node scripts/build-seed.mjs",
+    "test": "node --experimental-sqlite --test --test-reporter=spec tests/*.test.js",
+    "test:quiet": "node --experimental-sqlite --test tests/*.test.js",
+    "build": "node scripts/build.mjs",
+    "check": "npm run build && npm run test:quiet"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
