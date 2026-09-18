@@ -24,7 +24,14 @@ export default async function paymentsScreen({ query }) {
   const page = el('div.mm-page');
   const noticeHost = el('div');
 
-  const gateways = await api.get('/billing/gateways').then(r => r.data ?? []).catch(() => []);
+  // Which gateways a firm has connected is staff information, and the endpoint
+  // is gated on `billing.view` / `integrations.view` accordingly. A client
+  // holds neither, so asking for it here 403'd on every visit to
+  // /client/payments — and the answer was never shown to them anyway: the
+  // banner below is staff-only and the gateway filter needs the same data.
+  const gateways = forClient
+    ? []
+    : await api.get('/billing/gateways').then(r => r.data ?? []).catch(() => []);
   const connected = gateways.filter(g => g.configured);
 
   if (!connected.length && !forClient) {

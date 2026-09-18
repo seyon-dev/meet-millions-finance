@@ -18,7 +18,7 @@ import * as router from '../../core/router.js';
 import * as session from '../../core/session.js';
 import {
   pageHead, card, stat, button, statusPill, pill, avatar, emptyState, errorState,
-  skeletonTable, notify, notifyError, banner, modal, lockedState,
+  skeletonTable, notify, notifyError, banner, modal, lockedState, confirm,
 } from '../../core/ui.js';
 import { setBreadcrumbs } from '../../layout/shell.js';
 
@@ -109,9 +109,13 @@ export default async function inboxScreen({ query }) {
     pageHead({
       title: 'Chat inbox',
       subtitle: 'WhatsApp and SMS conversations with your clients.',
-      actions: session.can('messaging.broadcast')
-        ? button('Broadcast', { variant: 'ghost', icon: 'bell-ring', onClick: () => openBroadcast() })
-        : null,
+      actions: frag(
+        session.can('messaging.templates')
+          ? button('Chatbot flows', { variant: 'ghost', icon: 'zap', onClick: () => openFlows() })
+          : null,
+        session.can('messaging.broadcast')
+          ? button('Broadcast', { variant: 'ghost', icon: 'bell-ring', onClick: () => openBroadcast() })
+          : null),
     }),
     el('div.mm-split', listHost, threadHost));
 
@@ -270,6 +274,240 @@ function templateCard(thread, chatWindow, templates, reload, reloadList) {
  * builds — so the recipient count is the server's own count and cannot drift
  * from what is actually sent.
  */
+/**
+ * Chatbot flows.
+ *
+ * A flow is a small graph: each node says something, and a question node
+ * branches on the answer. The builder is a list of nodes rather than a canvas
+ * — a canvas looks impressive and is worse to use on a phone, and every flow
+ * this is for is under a dozen nodes.
+ *
+ * Nothing here can be saved without passing the same validation the API
+ * applies, and "Test it" replays the flow against nobody so a broken branch is
+ * found here rather than by a client.
+ */
+async function openFlows() {
+  await modal({
+    title: 'Chatbot flows',
+    size: 'lg',
+    body: ({ close }) => {
+      const host = el('div');
+
+      async function refresh() {
+        render(host, el('div.mm-row.mm-gap-2', el('span.mm-spinner'), el('span', { text: 'Loading flows…' })));
+        try {
+          const { data } = await api.get('/messaging/flows');
+          render(host, list(data.flows ?? []));
+        } catch (err) {
+          render(host, errorState(err, { onRetry: refresh }));
+        }
+      }
+
+      function list(flows) {
+        return el('div.mm-stack.mm-gap-3',
+          el('div.mm-row.mm-gap-2',
+            el('span.mm-muted.mm-text-sm', {
+              text: flows.length
+                ? `${flows.filter(f => f.isActive).length} of ${flows.length} active. `
+                  + 'An active flow answers any message containing one of its keywords.'
+                : 'No flows yet. A flow answers common questions automatically and hands over when it cannot.',
+            }),
+            el('span.mm-grow'),
+            button('New flow', { variant: 'primary', icon: 'plus', size: 'sm', onClick: () => editFlow(null, refresh) })),
+
+          flows.length
+            ? el('ul.mm-list',
+                ...flows.map(f => el('li.mm-list__row',
+                  el('span.mm-list__icon', icon(f.isActive ? 'zap' : 'pause', { size: 'sm' })),
+                  el('div.mm-list__main',
+                    el('span.mm-fw-medium', { text: f.name }),
+                    el('span.mm-muted.mm-text-xs', {
+                      text: [
+                        `${f.nodes.length} step${f.nodes.length === 1 ? '' : 's'}`,
+                        f.triggerKeywords.length ? `triggers: ${f.triggerKeywords.join(', ')}` : 'no triggers',
+                        f.fallbackToHuman ? 'hands over when stuck' : 'no handover',
+                      ].join(' · '),
+                    })),
+                  pill(f.isActive ? 'Active' : 'Off', f.isActive ? 'success' : 'neutral'),
+                  button('Test', { variant: 'ghost', size: 'sm', onClick: () => simulate(f) }),
+                  button('Edit', { variant: 'ghost', size: 'sm', onClick: () => editFlow(f, refresh) }))))
+            : emptyState({
+                title: 'No chatbot flows',
+                message: 'Build one to answer status questions and collect documents without anybody typing.',
+                icon: 'zap',
+                inline: true,
+              }));
+      }
+
+      refresh();
+      return host;
+    },
+  });
+}
+
+async function editFlow(existing, reload) {
+  // Start from a working two-step flow rather than an empty canvas: an empty
+  // builder is the hardest thing to begin with, and this one is valid as-is.
+  const starting = existing?.nodes?.length ? existing.nodes : [
+    {
+      id: 'ask',
+      type: 'question',
+      prompt: 'Hello! What can I help you with?',
+      options: [
+        { label: 'My filing status', keywords: ['status', 'filing'], next: 'status' },
+        { label: 'Send a document', keywords: ['document', 'upload'], next: 'collect' },
+        { label: 'Talk to someone', keywords: ['human', 'person'], next: 'human' },
+      ],
+      retryPrompt: 'Sorry, I did not follow. Let me get someone to help.',
+    },
+    { id: 'status', type: 'status', prompt: 'Checking your filing…' },
+    { id: 'collect', type: 'collect_document', prompt: 'Please send the document here and we will file it.' },
+    { id: 'human', type: 'handover', prompt: 'One moment — connecting you to your executive.' },
+  ];
+
+  await modal({
+    title: existing ? `Edit “${existing.name}”` : 'New chatbot flow',
+    size: 'lg',
+    body: ({ close }) => {
+      const name = el('input.mm-input', { value: existing?.name ?? '', placeholder: 'Filing status bot' });
+      const keywords = el('input.mm-input', {
+        value: (existing?.triggerKeywords ?? ['status', 'hello']).join(', '),
+        placeholder: 'status, hello, help',
+      });
+      const nodesField = el('textarea.mm-input.mm-textarea', {
+        rows: 14,
+        spellcheck: 'false',
+        value: JSON.stringify(starting, null, 2),
+      });
+      const entry = el('input.mm-input', { value: existing?.entryNodeId ?? 'ask', placeholder: 'ask' });
+      const active = el('input', { type: 'checkbox', checked: existing?.isActive ?? false });
+      const fallback = el('input', { type: 'checkbox', checked: existing?.fallbackToHuman ?? true });
+
+      const save = button(existing ? 'Save flow' : 'Create flow', {
+        variant: 'primary',
+        onClick: async () => {
+          let nodes;
+          try {
+            nodes = JSON.parse(nodesField.value);
+          } catch (err) {
+            notify.warning(`The steps are not valid JSON: ${err.message}`);
+            return;
+          }
+          const payload = {
+            name: name.value.trim(),
+            triggerKeywords: keywords.value.split(',').map(k => k.trim()).filter(Boolean),
+            nodes,
+            entryNodeId: entry.value.trim(),
+            isActive: active.checked,
+            fallbackToHuman: fallback.checked,
+          };
+          if (!payload.name) { notify.warning('Give the flow a name.'); name.focus(); return; }
+
+          save.disabled = true;
+          try {
+            if (existing) await api.patch(`/messaging/flows/${existing.id}`, payload);
+            else await api.post('/messaging/flows', payload);
+            notify.success(existing ? 'Flow saved.' : 'Flow created.');
+            close();
+            reload();
+          } catch (err) {
+            // The API validates the graph — a dangling jump comes back as a
+            // readable sentence, so show it rather than a generic failure.
+            notifyError(err);
+            save.disabled = false;
+          }
+        },
+      });
+
+      const remove = existing
+        ? button('Delete', {
+            variant: 'ghost', icon: 'trash',
+            onClick: async () => {
+              const yes = await confirm({
+                title: `Delete “${existing.name}”?`,
+                message: 'Any conversation currently inside this flow is handed to a person. '
+                  + 'Messages already sent are kept.',
+                confirmLabel: 'Delete flow',
+                tone: 'danger',
+              });
+              if (!yes) return;
+              try {
+                await api.delete(`/messaging/flows/${existing.id}`);
+                notify.success('Flow deleted.');
+                close();
+                reload();
+              } catch (err) { notifyError(err); }
+            },
+          })
+        : null;
+
+      return el('div.mm-stack.mm-gap-3',
+        el('label.mm-field', el('span.mm-field__label', { text: 'Name' }), name),
+        el('label.mm-field',
+          el('span.mm-field__label', { text: 'Trigger keywords (comma separated)' }), keywords),
+        el('label.mm-field', el('span.mm-field__label', { text: 'First step id' }), entry),
+        el('label.mm-field',
+          el('span.mm-field__label', { text: 'Steps' }),
+          nodesField,
+          el('span.mm-muted.mm-text-xs', {
+            text: 'Types: message, question, status, collect_document, handover. '
+              + 'A question needs options, each with a "next". "status" reads the real filing record.',
+          })),
+        el('div.mm-row.mm-gap-4',
+          el('label.mm-row.mm-gap-2', active, el('span.mm-text-sm', { text: 'Active' })),
+          el('label.mm-row.mm-gap-2', fallback, el('span.mm-text-sm', { text: 'Hand over when stuck' }))),
+        el('div.mm-row.mm-gap-2', remove, el('span.mm-grow'), save));
+    },
+  });
+}
+
+/** Replay a flow against nobody, and show what it would have said. */
+async function simulate(flow) {
+  await modal({
+    title: `Test “${flow.name}”`,
+    size: 'md',
+    body: () => {
+      const host = el('div');
+      const input = el('input.mm-input', { placeholder: 'Type a reply, then Send' });
+      const replies = [];
+
+      async function run() {
+        render(host, el('div.mm-row.mm-gap-2', el('span.mm-spinner'), el('span', { text: 'Running…' })));
+        try {
+          const { data } = await api.post(`/messaging/flows/${flow.id}/simulate`, { replies });
+          render(host,
+            el('div.mm-transcript.mm-transcript--sim',
+              ...(data.transcript ?? []).map(line => el('div.mm-transcript__line',
+                el('span.mm-transcript__speaker', { text: line.from === 'bot' ? 'Bot' : 'Client' }),
+                el('span.mm-transcript__text', { text: line.text })))),
+            el('p.mm-muted.mm-text-xs.mm-mt-2', { text: data.note ?? '' }));
+        } catch (err) {
+          render(host, errorState(err, { onRetry: run }));
+        }
+      }
+
+      const send = button('Send', {
+        variant: 'secondary', size: 'sm',
+        onClick: () => {
+          if (!input.value.trim()) return;
+          replies.push(input.value.trim());
+          input.value = '';
+          run();
+        },
+      });
+
+      run();
+      return el('div.mm-stack.mm-gap-3',
+        host,
+        el('div.mm-row.mm-gap-2', input, send),
+        el('p.mm-muted.mm-text-xs', {
+          text: 'Nothing is sent to anybody. The filing-status step reads a real record only when a '
+            + 'conversation is linked to a client, so it hands over here.',
+        }));
+    },
+  });
+}
+
 async function openBroadcast() {
   const payload = await modal({
     title: 'Broadcast',

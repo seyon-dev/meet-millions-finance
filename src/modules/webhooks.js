@@ -29,6 +29,7 @@ import { MetaLeadsProvider, DigioProvider, LeegalityProvider } from '../integrat
 import { settlePayment } from './billing.js';
 import { logSystemEvent } from '../services/logging.js';
 import { auditSystem } from '../services/audit.js';
+import { replyToInbound } from '../services/chatbot.js';
 
 const router = createRouter();
 
@@ -405,7 +406,55 @@ async function storeInboundWhatsApp(db, change, message) {
     window_expires_at: addHours(24),
   });
 
-  return { status: 'processed', message: `Message from ${message.from} stored.` };
+  // ---- The chatbot ---------------------------------------------------------
+  // Only text is offered to a flow: a bot cannot sensibly answer an image or a
+  // document, and pretending otherwise is how a client gets a menu in reply to
+  // a bank statement. Anything else simply waits for a person.
+  let bot = null;
+  if ((message.type ?? 'text') === 'text') {
+    const current = await scope.first('chat_threads', { id: thread.id });
+    try {
+      bot = await replyToInbound(ctx, scope, { thread: current, text: body });
+    } catch (err) {
+      // A broken flow must never swallow a client's message. The message is
+      // already stored; log the failure and leave the thread to a person.
+      bot = null;
+      await logSystemEvent(ctx.env, {
+        level: 'error', source: 'webhook', event: 'chatbot_failed',
+        message: err?.message ?? 'Chatbot flow failed', stack: err?.stack,
+        tenantId: integration.tenant_id, context: { threadId: thread.id },
+      });
+    }
+  }
+
+  if (bot?.reply) {
+    const provider = new WhatsAppProvider(ctx.env);
+    const sent = await provider.sendText({ to: from, text: bot.reply });
+
+    await scope.insert('chat_messages', {
+      id: ID.message(),
+      thread_id: thread.id,
+      direction: 'outbound',
+      type: 'text',
+      body: bot.reply,
+      provider_message_id: sent?.data?.messageId ?? null,
+      // Reported as what actually happened, not as a hopeful 'sent'.
+      status: sent?.ok ? 'sent' : 'failed',
+      sent_by: null,
+    });
+    await scope.update('chat_threads', thread.id, {
+      last_message_at: nowIso(),
+      last_message_preview: bot.reply.slice(0, 160),
+      status: bot.handover ? 'open' : 'bot',
+    });
+  }
+
+  return {
+    status: 'processed',
+    message: bot?.reply
+      ? `Message from ${message.from} answered by a chatbot flow.`
+      : `Message from ${message.from} stored.`,
+  };
 }
 
 function mapWhatsAppStatus(status) {
@@ -416,7 +465,11 @@ function mapWhatsAppStatus(status) {
 // Meta Lead Ads
 // ---------------------------------------------------------------------------
 router.get('/meta-leads', async (ctx) => {
-  const expected = ctx.env.META_VERIFY_TOKEN;
+  // The name must match the one the provider and .env.example use. It read
+  // META_VERIFY_TOKEN here and META_LEADGEN_VERIFY_TOKEN everywhere else, so
+  // the value was always undefined and Meta's subscription handshake got a
+  // 503 no matter how the deployment was configured.
+  const expected = ctx.env.META_LEADGEN_VERIFY_TOKEN;
   if (!expected) return new Response('Not configured', { status: 503 });
   if (ctx.q('hub.mode') === 'subscribe' && ctx.q('hub.verify_token') === expected) {
     return new Response(ctx.q('hub.challenge') ?? '', { status: 200, headers: { 'Content-Type': 'text/plain' } });

@@ -5,13 +5,13 @@
  */
 
 import { AppError } from './errors.js';
+import { BASE_SECURITY_HEADERS, apiCsp } from './security.js';
 
+// A JSON body should be able to load nothing at all, so API responses carry
+// the most restrictive policy there is alongside the shared headers.
 const SECURITY_HEADERS = {
-  'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY',
-  'Referrer-Policy': 'strict-origin-when-cross-origin',
-  'Cross-Origin-Opener-Policy': 'same-origin',
-  'Permissions-Policy': 'geolocation=(self), microphone=(self), camera=(self), payment=(self)',
+  ...BASE_SECURITY_HEADERS,
+  'Content-Security-Policy': apiCsp(),
 };
 
 function baseMeta(ctx) {

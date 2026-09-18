@@ -20,6 +20,7 @@ import { Readable } from 'node:stream';
 import worker from '../src/index.js';
 import { createTestD1, R2Shim, KVShim } from '../tests/helpers/d1.js';
 import { bootstrapPlatform } from '../src/services/bootstrap.js';
+import { documentCsp, BASE_SECURITY_HEADERS } from '../src/http/security.js';
 
 const args = process.argv.slice(2);
 const port = Number(readFlag('--port') ?? process.env.PORT ?? 8787);
@@ -161,10 +162,22 @@ async function handleStatic(res, pathname) {
   }
 
   const content = await readFile(filePath);
-  res.writeHead(200, {
-    'Content-Type': MIME[extname(filePath)] ?? 'application/octet-stream',
+  const type = MIME[extname(filePath)] ?? 'application/octet-stream';
+
+  // The same headers the Worker attaches in production. Without them the
+  // development server serves a different application from the deployed one,
+  // and a Content-Security-Policy that breaks a screen would not be found
+  // until after a deploy.
+  const headers = {
+    'Content-Type': type,
     'Cache-Control': 'no-store',
-  });
+    ...BASE_SECURITY_HEADERS,
+  };
+  if (type.startsWith('text/html')) {
+    headers['Content-Security-Policy'] = documentCsp({ appUrl: env.APP_URL });
+  }
+
+  res.writeHead(200, headers);
   res.end(content);
 }
 

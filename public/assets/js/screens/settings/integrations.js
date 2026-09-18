@@ -21,7 +21,7 @@ import * as fmt from '../../core/format.js';
 import * as session from '../../core/session.js';
 import {
   pageHead, card, kv, stat, button, statusPill, pill, emptyState, errorState,
-  skeletonTiles, notify, notifyError, modal, banner,
+  skeletonTiles, notify, notifyError, modal, banner, confirm,
 } from '../../core/ui.js';
 import { setBreadcrumbs } from '../../layout/shell.js';
 
@@ -29,7 +29,7 @@ const CATEGORY_ICONS = {
   email: 'mail', sms: 'smartphone', whatsapp: 'message-circle', push: 'bell',
   ocr: 'scan-text', speech: 'mic', llm: 'sparkle', storage: 'database',
   leads: 'magnet', calendar: 'calendar', esign: 'pen-tool', dns: 'network',
-  payments: 'credit-card', telephony: 'phone',
+  payments: 'credit-card', telephony: 'phone', security: 'shield-check',
 };
 
 /**
@@ -53,6 +53,7 @@ const CATEGORY_LABELS = {
   dns: 'Custom domains',
   payments: 'Payments',
   telephony: 'Telephony',
+  security: 'Security',
 };
 
 const categoryLabel = key => CATEGORY_LABELS[key] ?? fmt.label(key);
@@ -66,8 +67,13 @@ export default async function integrationsScreen() {
   async function load() {
     render(bodyHost, skeletonTiles(4));
     try {
-      const { data } = await api.get('/integrations');
-      render(bodyHost, ...build(data, load));
+      const [{ data }, storage] = await Promise.all([
+        api.get('/integrations'),
+        // Folder mappings are what make Drive/Dropbox/OneDrive actually sync;
+        // without one the engine has nothing to match a document against.
+        api.get('/integrations/storage/folders').then(r => r.data).catch(() => null),
+      ]);
+      render(bodyHost, ...build(data, load, storage));
     } catch (err) {
       render(bodyHost, errorState(err, { onRetry: load }));
     }
@@ -84,7 +90,7 @@ export default async function integrationsScreen() {
   return page;
 }
 
-function build(data, reload) {
+function build(data, reload, storage) {
   const summary = data.summary ?? {};
   const byCategory = Object.entries(data.byCategory ?? {});
 
@@ -122,7 +128,143 @@ function build(data, reload) {
       body: el('ul.mm-list',
         ...integrations.map(integration => row(integration, reload))),
     })),
+
+    storageCard(data, storage, reload),
   ].filter(Boolean);
+}
+
+/**
+ * Where verified documents are mirrored.
+ *
+ * A connected Drive account syncs nothing on its own: the engine reads folder
+ * mappings, and until one exists every document it is handed matches no map
+ * and is dropped. This card is where a mapping is made.
+ */
+function storageCard(data, storage, reload) {
+  const connected = (data.integrations ?? [])
+    .filter(i => ['google_drive', 'dropbox', 'onedrive'].includes(i.key) && i.status === 'connected');
+
+  const folders = storage?.folders ?? [];
+  const canManage = session.can('integrations.manage');
+
+  return card({
+    title: 'Document sync folders',
+    subtitle: folders.length
+      ? `${folders.length} mapping${folders.length === 1 ? '' : 's'} — verified documents are copied to each`
+      : 'Nothing is mapped, so no document is being copied anywhere',
+    actions: canManage && connected.length
+      ? button('Map a folder', { variant: 'primary', icon: 'plus', onClick: () => mapFolder(connected, reload) })
+      : null,
+    flush: !!folders.length,
+    body: folders.length
+      ? el('ul.mm-list', ...folders.map(f => folderRow(f, reload, canManage)))
+      : emptyState({
+          title: connected.length ? 'No folder is mapped yet' : 'No cloud storage is connected',
+          message: connected.length
+            ? 'Google Drive, Dropbox and OneDrive each need a folder mapping before anything syncs. '
+              + 'A connected account on its own copies nothing.'
+            : 'Connect Google Drive, Dropbox or OneDrive above, then map a folder to start mirroring '
+              + 'verified documents.',
+          icon: 'database',
+          inline: true,
+        }),
+  });
+}
+
+function folderRow(folder, reload, canManage) {
+  const stale = folder.integrationStatus && folder.integrationStatus !== 'connected';
+
+  return el('li.mm-list__row',
+    el('span.mm-list__icon', icon(CATEGORY_ICONS.storage ?? 'database', { size: 'sm' })),
+    el('div.mm-list__main',
+      el('span.mm-fw-medium', { text: `${fmt.vendor(folder.provider)} — ${folder.remotePath}` }),
+      el('span.mm-muted.mm-text-xs', {
+        text: [
+          folder.scopeLabel,
+          `on ${folder.syncOn}`,
+          folder.autoSync ? 'automatic' : 'manual',
+          folder.preserveVersions ? 'keeps versions' : 'latest only',
+          folder.pendingCount ? `${folder.pendingCount} waiting` : null,
+        ].filter(Boolean).join(' · '),
+      })),
+    stale ? pill(fmt.label(folder.integrationStatus), 'warning') : null,
+    folder.pendingCount ? pill(`${folder.pendingCount} queued`, 'info') : null,
+    canManage
+      ? button('', {
+          variant: 'ghost', icon: 'trash', size: 'sm', title: 'Remove this mapping',
+          onClick: () => unmapFolder(folder, reload),
+        })
+      : null);
+}
+
+async function mapFolder(connected, reload) {
+  await modal({
+    title: 'Map a sync folder',
+    size: 'sm',
+    body: ({ close }) => {
+      const provider = el('select.mm-input.mm-select',
+        ...connected.map(i => el('option', { value: i.key, text: i.name })));
+      const path = el('input.mm-input', { placeholder: '/Meet Millions/Verified documents' });
+      const syncOn = el('select.mm-input.mm-select',
+        el('option', { value: 'verified', text: 'When a document is verified', selected: true }),
+        el('option', { value: 'approved', text: 'When a report is approved' }),
+        el('option', { value: 'upload', text: 'As soon as it is uploaded' }));
+
+      const submit = button('Map folder', {
+        variant: 'primary',
+        onClick: async () => {
+          if (!path.value.trim()) { notify.warning('Give the folder a path.'); path.focus(); return; }
+          submit.disabled = true;
+          try {
+            await api.post('/integrations/storage/folders', {
+              provider: provider.value,
+              remotePath: path.value.trim(),
+              syncOn: syncOn.value,
+              scopeType: 'tenant',
+            });
+            notify.success('Folder mapped. Verified documents will be copied there from now on.');
+            close();
+            reload();
+          } catch (err) {
+            notifyError(err);
+            submit.disabled = false;
+          }
+        },
+      });
+
+      return el('div.mm-stack.mm-gap-3',
+        el('label.mm-field', el('span.mm-field__label', { text: 'Provider' }), provider),
+        el('label.mm-field', el('span.mm-field__label', { text: 'Folder path' }), path),
+        el('label.mm-field', el('span.mm-field__label', { text: 'Copy a document' }), syncOn),
+        el('p.mm-muted.mm-text-xs', {
+          text: 'The folder is created on the provider if it does not exist. Existing documents are not '
+            + 'back-filled — the mapping applies from now on.',
+        }),
+        el('div.mm-row.mm-gap-2', el('span.mm-grow'), submit));
+    },
+  });
+}
+
+async function unmapFolder(folder, reload) {
+  const yes = await confirm({
+    title: 'Remove this mapping?',
+    message: `${fmt.vendor(folder.provider)} will stop receiving documents at ${folder.remotePath}. `
+      + `${folder.pendingCount ? `${folder.pendingCount} document(s) still waiting to sync will be dropped. ` : ''}`
+      + 'Files already copied there are left alone.',
+    confirmLabel: 'Remove mapping',
+    tone: 'danger',
+  });
+  if (!yes) return;
+
+  try {
+    const { data } = await api.delete(`/integrations/storage/folders/${folder.id}`);
+    notify.success(data?.queuedDropped
+      ? `Mapping removed. ${data.queuedDropped} queued item(s) were dropped.`
+      : 'Mapping removed.');
+    reload();
+  } catch (err) {
+    notifyError(err);
+  }
 }
 
 function row(integration, reload) {

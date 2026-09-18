@@ -15,6 +15,7 @@ import * as router from '../core/router.js';
 import { avatar, iconButton, notify, notifyError, banner } from '../core/ui.js';
 import * as fmt from '../core/format.js';
 import { openCommandPalette } from './command-palette.js';
+import { mountCallWidget, unmountCallWidget } from './call-widget.js';
 import { openNotifications } from './notifications.js';
 
 let shell = null;
@@ -47,9 +48,15 @@ export function mountShell(root) {
   refreshUnread();
   refreshBadges();
 
+  // A ringing phone has to be answerable from whatever screen somebody is on,
+  // so the call widget lives beside the shell rather than inside /calls. It
+  // mounts itself only when the person can see calls and the plan has
+  // telephony, and polls nothing otherwise.
+  mountCallWidget();
+
   // The shell rebuilds its navigation when entitlements change — activating an
   // add-on should light up its screen without a reload.
-  session.subscribe(() => { paintNav(); });
+  session.subscribe(() => { paintNav(); mountCallWidget(); });
   document.addEventListener('mm:navigated', () => {
     paintNav();
     closeDrawer();
@@ -409,6 +416,9 @@ function openUserMenu(anchor) {
       type: 'button', role: 'menuitem',
       onClick: async () => {
         closeMenu();
+        // Stop polling before the session goes, or the widget keeps asking
+        // with a token that no longer works.
+        unmountCallWidget();
         await session.signOut();
         router.go('/login', { replace: true });
       },

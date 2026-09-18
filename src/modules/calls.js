@@ -293,6 +293,12 @@ router.post('/dial', async (ctx) => {
 
 /** Live status — the "Live Call Status" capability, polled by the call bar. */
 router.get('/live', async (ctx) => {
+  // The platform owner holds calls.view but belongs to no organisation, and
+  // calls belong to one. Building a tenant scope without a tenant throws, so
+  // the global call widget polling this from a platform screen used to get a
+  // 500 on every heartbeat. There are no calls to show — say so.
+  if (!ctx.tenantId) return ok({ calls: [], serverTime: nowIso() }, { ctx });
+
   const scope = scopeFor(ctx);
   const where = scope.where('call_records', 'cr');
   where.inIf('cr.status', LIVE_STATUSES);

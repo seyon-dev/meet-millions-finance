@@ -11,6 +11,7 @@ import { createRouter } from '../http/router.js';
 import { ok, created, paginated, fileResponse } from '../http/response.js';
 import {
   BadRequestError, ForbiddenError, NotFoundError, ConflictError, PayloadTooLargeError,
+  UnsupportedMediaTypeError,
 } from '../http/errors.js';
 import { Db, safeOrder } from '../db/client.js';
 import { scopeFor } from '../db/tenancy.js';
@@ -30,6 +31,7 @@ import { dispatchNotification } from '../services/notifications.js';
 import { applyClientVisibility, getVisibleClient } from './clients.js';
 import { queueOcr, queueAiPrecheck } from '../services/ai.js';
 import { queueCloudSync } from '../services/cloud-sync.js';
+import { VirusScanProvider } from '../integrations/antivirus.js';
 
 const router = createRouter();
 const SORTABLE = ['created_at', 'updated_at', 'title', 'status', 'priority', 'sla_due_at'];
@@ -266,7 +268,18 @@ async function ingestFile(ctx, scope, db, {
     fileName: validated.fileName,
   });
 
-  const stored = await putObject(ctx.env, key, await file.arrayBuffer(), {
+  const bytes = await file.arrayBuffer();
+
+  // Scanned before it is stored, so an infected file never reaches the bucket.
+  // With no scanner configured this returns `skipped` — which is the truth,
+  // and is what this used to record as `clean`.
+  const scan = await new VirusScanProvider(ctx.env).scan(bytes, { fileName: validated.fileName });
+  if (scan.scanStatus === 'infected') {
+    throw new UnsupportedMediaTypeError([],
+      `That file was rejected: ${scan.message} It has not been stored.`);
+  }
+
+  const stored = await putObject(ctx.env, key, bytes, {
     contentType: validated.mimeType,
     fileName: validated.fileName,
     metadata: { tenantId: ctx.tenantId, clientId: client.id, documentId, versionId },
@@ -307,7 +320,7 @@ async function ingestFile(ctx, scope, db, {
     uploaded_by: ctx.userId,
     upload_note: note ?? null,
     is_current: 1,
-    scan_status: 'clean',
+    scan_status: scan.scanStatus,
   });
 
   await syncChecklistForDocument(scope, document);
@@ -499,7 +512,17 @@ router.post('/:id/versions', async (ctx) => {
     fileName: validated.fileName,
   });
 
-  const stored = await putObject(ctx.env, key, await file.arrayBuffer(), {
+  const bytes = await file.arrayBuffer();
+
+  // A replacement gets the same treatment as a first upload. A corrected file
+  // is not a trusted file.
+  const scan = await new VirusScanProvider(ctx.env).scan(bytes, { fileName: validated.fileName });
+  if (scan.scanStatus === 'infected') {
+    throw new UnsupportedMediaTypeError([],
+      `That file was rejected: ${scan.message} It has not been stored, and the existing version is unchanged.`);
+  }
+
+  const stored = await putObject(ctx.env, key, bytes, {
     contentType: validated.mimeType, fileName: validated.fileName,
     metadata: { tenantId: ctx.tenantId, documentId: document.id, versionId },
   });
@@ -519,7 +542,7 @@ router.post('/:id/versions', async (ctx) => {
     upload_note: note ? String(note) : null,
     replaces_version_id: document.current_version_id,
     is_current: 1,
-    scan_status: 'clean',
+    scan_status: scan.scanStatus,
   });
 
   // A replacement re-enters review: a corrected file is not a verified file.
@@ -792,6 +815,30 @@ router.get('/types/list', async (ctx) => {
       ORDER BY sort_order, name`, [ctx.tenantId]);
   return ok(rows, { ctx });
 }, { anyPermission: ['documents.view', 'documents.view.own', 'documents.upload'] });
+
+/**
+ * What this deployment will accept in an upload.
+ *
+ * A client needs the size cap and the allowed extensions to show an accurate
+ * dropzone, but has no business reading organisation settings. This used to
+ * come from GET /settings, which is gated on `settings.view` — a permission no
+ * client holds — so the client upload screen 403'd on every load and silently
+ * fell back to guessed limits.
+ *
+ * Whoever may upload may know what upload accepts.
+ */
+router.get('/limits', async (ctx) => {
+  const limits = limitsFor(ctx.env);
+  return ok({
+    maxBytes: limits.maxBytes,
+    maxBytesLabel: formatBytes(limits.maxBytes),
+    allowedExtensions: limits.allowedExtensions,
+    allowedMime: limits.allowedMime,
+    blockedExtensions: limits.blockedExtensions,
+    maxFilesPerUpload: limits.maxFilesPerUpload,
+    maxZipEntries: limits.maxZipEntries,
+  }, { ctx });
+}, { anyPermission: ['documents.upload', 'documents.view', 'documents.view.own'] });
 
 // ---------------------------------------------------------------------------
 

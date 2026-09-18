@@ -8,7 +8,9 @@
   "scripts": {
     "dev": "node scripts/dev-server.mjs --seed",
     "dev:wrangler": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "node scripts/preflight-deploy.mjs && wrangler deploy",
+    "deploy:check": "node scripts/preflight-deploy.mjs",
+    "deploy:dry": "wrangler deploy --dry-run",
     "db:migrate:local": "wrangler d1 migrations apply meetmillions_crm --local",
     "db:migrate:remote": "wrangler d1 migrations apply meetmillions_crm --remote",
     "db:check": "node scripts/check-migrations.mjs",

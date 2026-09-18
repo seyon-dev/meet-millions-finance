@@ -268,6 +268,157 @@ export async function verifyChain(db, tenantId, { limit = 5000 } = {}) {
   };
 }
 
+/**
+ * Anchor the chain's head.
+ *
+ * The hash chain detects an edited or deleted entry in the middle, because the
+ * chain stops matching. It cannot detect entries removed from the *end*: a
+ * truncated chain is shorter but still internally consistent, and verification
+ * reports it as valid.
+ *
+ * An anchor closes that. The head hash and sequence are written to a settings
+ * row on a schedule; each anchor includes the previous one, so the anchors form
+ * their own chain. Truncating the audit log now contradicts a record written
+ * separately — to hide it, somebody has to forge every anchor since.
+ *
+ * This is deliberately not perfect: an attacker with full database write access
+ * can rewrite the anchors too. Making it genuinely tamper-proof needs the head
+ * hash written somewhere outside this database entirely, which
+ * docs/disaster-recovery.md lists as the next improvement. What this does give
+ * is detection of the ordinary case — a DELETE run against audit_logs.
+ */
+export async function anchorChain(db, tenantId) {
+  const head = await db.one(
+    `SELECT sequence, hash FROM audit_logs WHERE tenant_id IS ?
+      ORDER BY sequence DESC LIMIT 1`, [tenantId ?? null]);
+
+  if (!head) return { anchored: false, reason: 'empty_chain' };
+
+  const key = `audit_anchor:${tenantId ?? 'platform'}`;
+  const existing = await db.one(
+    "SELECT * FROM settings WHERE tenant_id IS NULL AND namespace = 'platform' AND key = ?", [key]);
+
+  const previous = existing ? safeJson(existing.value_json, null) : null;
+
+  // Refusing to move an anchor backwards is the point: if the head sequence is
+  // lower than the last anchor, entries have been removed from the end.
+  if (previous && head.sequence < previous.sequence) {
+    return {
+      anchored: false,
+      reason: 'chain_shrank',
+      previousSequence: previous.sequence,
+      currentSequence: head.sequence,
+    };
+  }
+
+  const anchor = {
+    sequence: head.sequence,
+    hash: head.hash,
+    previousAnchorHash: previous?.selfHash ?? null,
+    at: nowIso(),
+  };
+  // Each anchor covers the one before it, so the anchors are a chain too.
+  anchor.selfHash = await sha256Hex(
+    `${anchor.previousAnchorHash ?? ''}::${anchor.sequence}::${anchor.hash}::${anchor.at}`);
+
+  if (existing) {
+    await db.run(
+      `UPDATE settings SET value_json = ?, updated_at = ?
+        WHERE tenant_id IS NULL AND namespace = 'platform' AND key = ?`,
+      [JSON.stringify(anchor), nowIso(), key]);
+  } else {
+    await db.insertOrIgnore('settings', {
+      id: ID.setting(),
+      tenant_id: null,
+      namespace: 'platform',
+      key,
+      value_json: JSON.stringify(anchor),
+      value_type: 'json',
+      description: 'Audit chain head, anchored so tail truncation is detectable.',
+      updated_at: nowIso(),
+    });
+  }
+
+  return { anchored: true, sequence: anchor.sequence, at: anchor.at };
+}
+
+/**
+ * Check the live chain against its last anchor.
+ *
+ * Returns `covered: false` when no anchor exists yet — which is the honest
+ * answer, not a pass.
+ */
+export async function verifyAgainstAnchor(db, tenantId) {
+  const key = `audit_anchor:${tenantId ?? 'platform'}`;
+  const row = await db.one(
+    "SELECT * FROM settings WHERE tenant_id IS NULL AND namespace = 'platform' AND key = ?", [key]);
+
+  if (!row) {
+    return {
+      covered: false,
+      reason: 'No anchor has been written yet, so truncation cannot be detected. '
+        + 'Anchors are written by the daily scheduled job.',
+    };
+  }
+
+  const anchor = safeJson(row.value_json, null);
+  if (!anchor) return { covered: false, reason: 'The stored anchor could not be read.' };
+
+  const head = await db.one(
+    `SELECT sequence, hash FROM audit_logs WHERE tenant_id IS ?
+      ORDER BY sequence DESC LIMIT 1`, [tenantId ?? null]);
+
+  if (!head) {
+    return {
+      covered: true, intact: false, anchoredSequence: anchor.sequence, currentSequence: 0,
+      reason: `The anchor records ${anchor.sequence} entries, but the log is now empty. `
+        + 'Entries have been removed.',
+    };
+  }
+
+  if (head.sequence < anchor.sequence) {
+    return {
+      covered: true, intact: false,
+      anchoredSequence: anchor.sequence, currentSequence: head.sequence,
+      reason: `The log ends at ${head.sequence} but was anchored at ${anchor.sequence}. `
+        + `${anchor.sequence - head.sequence} entr${anchor.sequence - head.sequence === 1 ? 'y has' : 'ies have'} `
+        + 'been removed from the end.',
+    };
+  }
+
+  // The anchored entry must still be present and unchanged.
+  const anchored = await db.one(
+    'SELECT hash FROM audit_logs WHERE tenant_id IS ? AND sequence = ?',
+    [tenantId ?? null, anchor.sequence]);
+
+  if (!anchored) {
+    return {
+      covered: true, intact: false,
+      anchoredSequence: anchor.sequence, currentSequence: head.sequence,
+      reason: `Entry ${anchor.sequence} was anchored but is no longer in the log.`,
+    };
+  }
+  if (anchored.hash !== anchor.hash) {
+    return {
+      covered: true, intact: false,
+      anchoredSequence: anchor.sequence, currentSequence: head.sequence,
+      reason: `Entry ${anchor.sequence} has been modified since it was anchored.`,
+    };
+  }
+
+  return {
+    covered: true, intact: true,
+    anchoredSequence: anchor.sequence,
+    currentSequence: head.sequence,
+    anchoredAt: anchor.at,
+    reason: null,
+  };
+}
+
+function safeJson(raw, fallback) {
+  try { return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
+}
+
 /** Purge entries past their retention date (cron). */
 export async function purgeExpiredAuditLogs(db) {
   const meta = await db.run('DELETE FROM audit_logs WHERE retain_until IS NOT NULL AND retain_until < ?', [nowIso()]);

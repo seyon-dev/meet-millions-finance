@@ -40,10 +40,15 @@ export default {
   async fetch(request, env, executionCtx) {
     const ctx = new RequestContext(request, env, executionCtx);
 
-    // Static assets and SPA routes fall through to the ASSETS binding.
+    // Static assets and SPA routes fall through to the ASSETS binding, with
+    // the document policy attached on the way out. The binding serves the
+    // bytes; it does not know what the application is allowed to load.
     if (!isWorkerPath(ctx.pathname)) {
-      if (env.ASSETS) return env.ASSETS.fetch(request);
-      return new Response('Static assets are not configured on this deployment.', { status: 500 });
+      if (!env.ASSETS) {
+        return new Response('Static assets are not configured on this deployment.', { status: 500 });
+      }
+      const asset = await env.ASSETS.fetch(request);
+      return withDocumentSecurity(asset, ctx, env);
     }
 
     if (ctx.method === 'OPTIONS') return preflight(request, env);
@@ -123,6 +128,31 @@ export default {
       ensureBootstrapped(env).then(() => runScheduled(event, env)));
   },
 };
+
+/**
+ * Attach the document policy to an asset response.
+ *
+ * Only HTML gets the full policy: a stylesheet or a font has no script or
+ * frame to govern, and a policy on every image is bytes on every request for
+ * nothing. Everything still gets the shared headers and HSTS.
+ */
+function withDocumentSecurity(response, ctx, env) {
+  const headers = new Headers(response.headers);
+  const type = headers.get('content-type') ?? '';
+
+  for (const [key, value] of Object.entries(BASE_SECURITY_HEADERS)) headers.set(key, value);
+  for (const [key, value] of Object.entries(hstsFor(ctx.url))) headers.set(key, value);
+
+  if (type.includes('text/html')) {
+    headers.set('Content-Security-Policy', documentCsp({ appUrl: env.APP_URL }));
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 /**
  * CORS. Same-origin by default — the SPA is served by this Worker — but an

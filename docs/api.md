@@ -1,6 +1,6 @@
 # API reference
 
-313 routes across 34 routers. This file is generated from the
+325 routes across 34 routers. This file is generated from the
 routers themselves — `node scripts/gen-api-docs.mjs > docs/api.md` — so it
 cannot drift from the code.
 
@@ -116,6 +116,7 @@ signature instead.
 | POST | `/api/documents/:id/archive` | `documents.archive` |
 | DELETE | `/api/documents/:id` | `documents.delete` |
 | GET | `/api/documents/types/list` | `documents.view` or `documents.view.own` or `documents.upload` |
+| GET | `/api/documents/limits` | `documents.upload` or `documents.view` or `documents.view.own` |
 
 ### `/api/verification` — `src/modules/verification.js`
 
@@ -374,6 +375,11 @@ signature instead.
 | POST | `/api/integrations/:key/oauth/callback` | `integrations.manage` |
 | DELETE | `/api/integrations/:key/oauth` | `integrations.manage` |
 | GET | `/api/integrations/:key/logs` | `integrations.view` |
+| GET | `/api/integrations/storage/folders` | `integrations.view` |
+| POST | `/api/integrations/storage/folders` | `integrations.manage` |
+| PATCH | `/api/integrations/storage/folders/:id` | `integrations.manage` |
+| DELETE | `/api/integrations/storage/folders/:id` | `integrations.manage` |
+| GET | `/api/integrations/storage/folders/:id/queue` | `integrations.view` |
 | PUT | `/api/integrations/:key/mappings` | `integrations.manage` |
 
 ### `/api/platform` — `src/modules/platform.js`
@@ -422,6 +428,12 @@ signature instead.
 | POST | `/api/messaging/templates` | `messaging.templates` |
 | GET | `/api/messaging/broadcasts` | `messaging.view` |
 | POST | `/api/messaging/broadcasts` | `messaging.broadcast` |
+| GET | `/api/messaging/flows` | `messaging.view` |
+| GET | `/api/messaging/flows/:id` | `messaging.view` |
+| POST | `/api/messaging/flows` | `messaging.templates` |
+| PATCH | `/api/messaging/flows/:id` | `messaging.templates` |
+| DELETE | `/api/messaging/flows/:id` | `messaging.templates` |
+| POST | `/api/messaging/flows/:id/simulate` | `messaging.view` |
 
 ### `/api/voice-notes` — `src/modules/voice-notes.js`
 

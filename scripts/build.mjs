@@ -16,6 +16,8 @@
  *                  hides a control from the people who should have it
  *   css          — `var(--name)` with no definition renders as nothing at all
  *   icons        — a missing icon name falls back to the same generic mark
+ *   env          — a key the code reads but nobody documented is a feature
+ *                  that silently does nothing in production
  *
  *   node scripts/build.mjs [--quiet]
  */
@@ -205,7 +207,35 @@ const routes = [...app.matchAll(/\broute\('([^']+)',\s*\(\)\s*=>\s*import\('([^'
   say(`  filters      ${checked} against ${read.size} query names`);
 }
 
-// ---- 9. Every icon name used exists ---------------------------------------
+// ---- 9. The CSP hash matches the inline script it covers -------------------
+{
+  const html = readFileSync('public/index.html', 'utf8');
+  const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+
+  const { createHash } = await import('node:crypto');
+  const policy = readFileSync('src/http/security.js', 'utf8');
+  const declared = /INLINE_THEME_SCRIPT_HASH = '([^']+)'/.exec(policy)?.[1] ?? null;
+
+  if (!inline.length) {
+    note('csp', 'public/index.html has no inline script, but security.js still carries a hash for one.');
+  } else if (inline.length > 1) {
+    note('csp', `public/index.html has ${inline.length} inline scripts; the policy hashes only one. `
+      + 'Each needs its own hash or the extra ones are blocked.');
+  } else {
+    const actual = 'sha256-' + createHash('sha256').update(inline[0], 'utf8').digest('base64');
+    if (actual !== declared) {
+      // A mismatch does not fail loudly in a browser — the script is simply
+      // blocked, and the page loads with the wrong theme and no explanation.
+      note('csp', `The inline theme script changed but its CSP hash did not.\n`
+        + `       declared: ${declared}\n`
+        + `       actual:   ${actual}\n`
+        + '       Update INLINE_THEME_SCRIPT_HASH in src/http/security.js.');
+    }
+  }
+  say(`  csp          inline script hash ${declared ? 'declared' : 'MISSING'}`);
+}
+
+// ---- 10. Every icon name used exists --------------------------------------
 {
   const iconsSource = readFileSync('public/assets/js/core/icons.js', 'utf8');
   const known = new Set([
@@ -227,6 +257,14 @@ const routes = [...app.matchAll(/\broute\('([^']+)',\s*\(\)\s*=>\s*import\('([^'
     }
   }
   say(`  icons        ${checked} uses against ${known.size} icons`);
+}
+
+// ---- 11. Every environment variable is documented -------------------------
+{
+  const { checkEnvDocs } = await import('./check-env-docs.mjs');
+  const { problems: envProblems, count } = await checkEnvDocs();
+  for (const detail of envProblems) note('env', detail);
+  say(`  env          ${count} variables documented`);
 }
 
 // ---------------------------------------------------------------------------

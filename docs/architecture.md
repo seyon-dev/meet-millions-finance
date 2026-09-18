@@ -95,7 +95,7 @@ Three cron triggers, in `services/scheduler.js`:
 | Schedule | Jobs |
 | --- | --- |
 | every 15 minutes | due reminders, overdue invoices, SLA breaches, call metrics, task reminders |
-| daily at 03:00 | open the month's filing periods, flag subscription renewals, apply retention, run scheduled reports, generate nightly insights, retry storage sync |
+| daily at 03:00 | open the month's filing periods, flag subscription renewals, apply retention, **anchor the audit chains**, run scheduled reports, generate nightly insights, retry storage sync |
 | Mondays at 09:00 | the weekly digest |
 
 Each job is named, and a failure is written to the system log with its stack and

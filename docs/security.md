@@ -73,6 +73,33 @@ Before a byte is written:
 Voice notes have their own, narrower list — audio types only — so widening what
 documents accept never quietly widens what the recorder accepts.
 
+### Content scanning
+
+`document_versions.scan_status` is written from what actually happened, never
+assumed. The states mean exactly what they say:
+
+| `scan_status` | Meaning |
+| --- | --- |
+| `skipped` | No scanner is configured on this deployment, or the file is over the 32MB scan ceiling. **The file was not scanned.** |
+| `clean` | A scanner received the bytes and reported nothing. |
+| `infected` | A scanner reported a threat. The upload is **refused** — the bytes never reach R2 and no version row is written. |
+| `failed` | The scanner could not be reached, errored, or timed out. The file is stored but **not cleared**. |
+
+`failed` is deliberately distinct from `clean`: a scanner that times out has not
+cleared anything, and collapsing the two is how an unscanned file ends up marked
+safe.
+
+Configure it by setting `VIRUS_SCAN_URL` to any service that accepts raw bytes
+on `POST <url>/scan` and answers `{"infected": …}` or ClamAV's textual
+`OK`/`FOUND`; clamav-rest in front of clamd is the usual deployment. The
+Integrations screen tests it with the EICAR string and **fails the test if the
+scanner calls EICAR clean**, because a scanner that detects nothing is worse
+than none at all. ZIP entries go through the same path as direct uploads.
+
+With nothing configured, every upload is recorded `skipped`. That is the truth
+about an unconfigured deployment, and it is what this column used to record as
+`clean`.
+
 ## Output
 
 - `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
@@ -83,6 +110,29 @@ documents accept never quietly widens what the recorder accepts.
   no `innerHTML` carrying anything that came from the API.
 - Every SQL statement is parameterised. String interpolation into SQL appears
   nowhere in `src/`.
+
+### Content-Security-Policy
+
+Two policies, because a document and a JSON body have nothing in common
+(`src/http/security.js`):
+
+- **The application shell** gets `default-src 'self'` with `object-src 'none'`,
+  `frame-ancestors 'none'` and `base-uri 'self'`. Script sources are `'self'`,
+  a SHA-256 hash for the one inline script, and the three gateway CDNs that
+  serve an embedded SDK — Razorpay, Stripe and Cashfree. PhonePe redirects
+  rather than embedding, so it appears in `form-action` instead. Every origin
+  in the policy is there because something in this codebase fetches it.
+- **API and file responses** get `default-src 'none'`. A document served from
+  `/files` is attacker-influenced content, so it gets the most restrictive
+  policy the format allows.
+
+The inline theme script stays inline on purpose: moving it out reintroduces the
+flash of the wrong palette it exists to prevent. `npm run build` recomputes its
+hash from the file and fails when the two drift, so editing that script without
+updating the hash cannot ship a page whose own theme script is blocked.
+
+`Strict-Transport-Security` is sent only over HTTPS — setting it on a local
+plain-HTTP response would pin `localhost` to HTTPS in the developer's browser.
 
 ## Rate limiting
 
@@ -115,12 +165,23 @@ plus the previous entry's hash. Editing a row in place breaks every hash after
 it, and `verifyChain()` reports the first break. The Advanced Audit Log screen
 runs it on demand.
 
-**What the chain does not prove:** it detects modification and insertion, but it
-cannot detect truncation of the tail. Somebody with write access to the database
-can delete the most recent entries and the remaining chain still verifies.
-Detecting that needs the head hash anchored somewhere outside the database —
-periodically written to an append-only store — which this system does not yet
-do. It is listed in [honesty.md](honesty.md) for that reason.
+**Anchoring.** On its own the chain detects modification and insertion but not
+truncation of the tail: delete the most recent entries and what remains still
+verifies. A nightly job (`anchorChain`, in the daily scheduler) records the head
+sequence and hash, and each anchor hashes the one before it, so the anchors form
+a chain of their own. `verifyAgainstAnchor` then reports three distinct answers:
+the chain matches the anchor; it has moved forward and still contains the
+anchored entry; or it has **shrunk below the anchored sequence**, which is the
+truncation the bare chain cannot see. The anchor write itself refuses to move
+backwards and logs `audit_chain_shrank` at error level instead.
+
+**What anchoring still does not prove.** The anchors live in the same database.
+Somebody with write access to both `audit_logs` and `settings` can rewrite the
+anchor chain to match a truncated log. Closing that needs the head hash written
+to somewhere this deployment cannot reach — an append-only object store in a
+second account, or a third-party timestamping service. Truncation between two
+nightly runs is also invisible if the entries are replaced rather than removed.
+Both are listed in [honesty.md](honesty.md).
 
 ## The first Super Admin
 
@@ -138,20 +199,21 @@ who has read its documentation.
 
 Stated plainly, because knowing them is what makes them manageable:
 
-1. **The audit chain cannot prove tail truncation.** As above.
+1. **The audit anchors share the database they protect.** As above.
 2. **PBKDF2, not Argon2id.** A runtime constraint. The iteration count
    compensates as far as it can; it does not make PBKDF2 memory-hard.
 3. **KV rate limiting is eventually consistent.** A burst arriving at several
    edge locations at once can briefly exceed a limit before the counter
    converges. The durable D1 path is exact and is used for API-key quotas.
-4. **No Content-Security-Policy header yet.** The payment gateways each load
-   their own SDK from their own CDN, and a CSP that covers all four correctly
-   needs testing against each gateway's live checkout before it is turned on.
-   Until then the other headers are set and the DOM-building discipline above is
-   what limits XSS.
-5. **Virus scanning is not implemented.** Uploads are validated by extension,
-   MIME and size, and stored privately, but nothing scans their contents. A
-   deployment handling untrusted uploads should put a scanner in front of R2.
+4. **`style-src` allows `'unsafe-inline'`.** The policy below is otherwise
+   strict, including a hash for the one inline script. CSP has no hashing
+   mechanism for style *attributes*, and the interface sets them directly for
+   progress widths and chart bar heights, so the alternative is no inline
+   styling at all.
+5. **Upload scanning depends on a service this repository does not provide.**
+   The integration is real and the states are honest — see below — but a
+   deployment with `VIRUS_SCAN_URL` unset stores files marked `skipped`, which
+   means unscanned.
 6. **Sessions are not bound to an IP or device fingerprint.** A stolen token is
    usable until it expires or is revoked. Anomaly alerts notify; they do not
    block.

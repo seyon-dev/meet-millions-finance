@@ -275,14 +275,16 @@ export default async function clientUploadScreen({ query }) {
 }
 
 async function loadContext() {
-  const [clients, types, dashboard, settings] = await Promise.all([
+  const [clients, types, dashboard, limitsResponse] = await Promise.all([
     api.get('/clients', { pageSize: 50 }),
     api.get('/documents/types/list'),
     api.get('/dashboard').catch(() => ({ data: {} })),
-    api.get('/settings').catch(() => ({ data: {} })),
+    // Not /settings: that needs `settings.view`, which no client holds, so it
+    // 403'd here on every load and the dropzone quietly showed guessed limits.
+    api.get('/documents/limits').catch(() => ({ data: {} })),
   ]);
 
-  const limits = settings.data?.uploadLimits ?? {};
+  const limits = limitsResponse.data ?? {};
   const extensions = limits.allowedExtensions?.length
     ? limits.allowedExtensions.slice(0, 6).map(e => e.toUpperCase()).join(', ')
     : 'PDF, JPG, PNG, XLSX';

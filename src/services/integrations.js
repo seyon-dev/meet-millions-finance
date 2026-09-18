@@ -10,6 +10,7 @@
 import { SesProvider, Msg91Provider, WhatsAppProvider, FcmProvider } from '../integrations/messaging.js';
 import { VisionOcrProvider, SpeechProvider, ClaudeProvider } from '../integrations/ai.js';
 import { GoogleDriveProvider, DropboxProvider, OneDriveProvider } from '../integrations/cloud-storage.js';
+import { VirusScanProvider } from '../integrations/antivirus.js';
 import {
   GoogleSheetsProvider, GoogleFormsProvider, GoogleCalendarProvider, OutlookCalendarProvider,
   MetaLeadsProvider, DigioProvider, LeegalityProvider, CloudflareDnsProvider, WebhookFormProvider,
@@ -47,6 +48,9 @@ export const PROVIDER_REGISTRY = [
   { key: 'digio',            Ctor: DigioProvider,          addOn: 'esign',                   category: 'esign',     label: 'Digio e-Sign' },
   { key: 'leegality',        Ctor: LeegalityProvider,      addOn: 'esign',                   category: 'esign',     label: 'Leegality e-Sign' },
   { key: 'cloudflare_dns',   Ctor: CloudflareDnsProvider,  addOn: 'white_label_branding',    category: 'dns',       label: 'Custom domains' },
+  // Not an add-on: every deployment uploads files, so scanning belongs to the
+  // core. Unconfigured it reports Not Connected, which is what it is.
+  { key: 'virus_scan',       Ctor: VirusScanProvider,      addOn: null,                      category: 'security',  label: 'Upload scanning' },
 ];
 
 /** Payments and telephony have their own multi-provider selectors. */

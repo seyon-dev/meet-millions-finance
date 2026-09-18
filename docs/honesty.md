@@ -48,13 +48,17 @@ do nothing on a deployment with no keys, which they report rather than fake:
 
 ### Not implemented
 
-- **Virus scanning of uploads.** Validated by extension, MIME and size, and
-  stored privately; contents are not scanned.
-- **A Content-Security-Policy header.** See
-  [security.md](security.md#known-limits) for why it is not on yet.
-- **Audit-chain anchoring.** The chain detects modification and insertion but
-  not truncation of its tail. Anchoring the head hash outside the database is
-  not done.
+- **A virus scanner.** The *integration* is implemented and the upload path
+  uses it: an infected file is refused before it reaches R2, and
+  `scan_status` records `skipped`, `clean`, `infected` or `failed` from what
+  actually happened. But no scanner ships in this repository. Until
+  `VIRUS_SCAN_URL` points at one, every upload is recorded `skipped`, which
+  means unscanned.
+- **Off-database audit anchoring.** The nightly anchor now detects tail
+  truncation, which the bare chain could not. The anchors are stored in the
+  same database, so somebody with write access to both tables can rewrite them
+  to match. Writing the head hash to an append-only store outside this
+  deployment is not done.
 - **The mobile application.** Add-on 18 is a native app. The API it needs
   exists — push registration, device sessions, attendance with GPS — but no
   Android or iOS client is in this repository, and the add-on links to no screen

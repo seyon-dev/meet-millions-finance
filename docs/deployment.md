@@ -14,11 +14,28 @@ From an empty Cloudflare account to a running deployment.
 npx wrangler d1 create meetmillions_crm
 npx wrangler r2 bucket create meetmillions-crm-documents
 npx wrangler r2 bucket create meetmillions-crm-documents-preview
+```
+
+`d1 create` prints a `database_id`. Paste it into `wrangler.jsonc` in place of
+`REPLACE_WITH_D1_DATABASE_ID`. **Do not invent one** — `npm run deploy` refuses
+to run while the placeholder is there, and an id that is merely well-formed but
+wrong fails at the first request rather than at deploy time.
+
+Buckets are addressed by name, so there is nothing to paste for R2.
+
+**KV is optional and is deliberately not in the config.** It only accelerates
+rate-limit counters; `src/services/ratelimit.js` falls back to the durable
+`rate_limits` table in D1, which is exact rather than eventually consistent.
+Nothing else reads it. To add it later:
+
+```bash
 npx wrangler kv namespace create CACHE
 ```
 
-Each command prints an id. Put them in `wrangler.jsonc`, replacing the
-placeholder `database_id` and the KV namespace id.
+then uncomment the `kv_namespaces` block in `wrangler.jsonc` and paste the
+printed id. No code change is needed — the binding is detected at runtime. An
+all-zero placeholder id is what caused `KV namespace "…000000…" not found` on a
+previous deployment, which is why there is no placeholder to fill in wrongly.
 
 ## 2. Set the three required secrets
 
@@ -49,8 +66,21 @@ a deployment stops half way through.
 
 ```bash
 npm run check      # build checks and the full test suite
-npm run deploy
+npm run deploy     # preflight, then wrangler deploy
 ```
+
+`npm run deploy` runs `scripts/preflight-deploy.mjs` first. It refuses to deploy
+when a binding still carries a placeholder or an all-zero resource id, and when
+the Worker name in `wrangler.jsonc` is not the name the Cloudflare project
+expects. `wrangler deploy --dry-run` does **not** catch either — it validates the
+shape of the configuration, not the resources it points at, and a missing
+`database_id` passes it. Run the preflight on its own with:
+
+```bash
+npm run deploy:check
+```
+
+Nothing is created or changed when it stops.
 
 ## 5. Create the first Super Admin
 
@@ -85,7 +115,26 @@ is connected, and exactly which environment variables are missing. Add each with
 `wrangler secret put`, then press **Test connection**: it makes a real call
 against the vendor rather than reporting itself as configured.
 
-`.env.example` documents every variable.
+`.env.example` documents every variable. `npm run build` fails when the code
+reads one that is not in there, so it stays complete.
+
+### Upload scanning
+
+Not a vendor, but the one optional service worth setting up before handling real
+client documents:
+
+```bash
+npx wrangler secret put VIRUS_SCAN_URL     # e.g. https://clamav.internal.example
+npx wrangler secret put VIRUS_SCAN_TOKEN   # optional bearer token
+```
+
+Any service that accepts raw bytes on `POST <url>/scan` and answers
+`{"infected": true|false}` or ClamAV's textual `OK`/`FOUND` works; clamav-rest in
+front of clamd is the usual deployment. **Test connection** sends the EICAR
+string and fails if the scanner calls it clean.
+
+Without it, uploads are recorded `scan_status = 'skipped'` — accurate, and not
+the same as clean. See [security.md](security.md#content-scanning).
 
 ## Cron
 

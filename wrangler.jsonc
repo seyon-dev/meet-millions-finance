@@ -1,6 +1,11 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "meet-millions-finance-crm",
+
+  // The Worker name must match the Cloudflare Workers project exactly. A
+  // mismatch is not a warning at deploy time — CI looks for this name and
+  // fails when it does not find it.
+  "name": "meet-millions-finance",
+
   "main": "src/index.js",
   "compatibility_date": "2025-09-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -8,8 +13,27 @@
   "observability": { "enabled": true },
 
   // ---------------------------------------------------------------------
-  // Static assets — the Vanilla JS SPA in /public is served by the Worker.
-  // API requests (/api/*) fall through to the Worker script.
+  // ONE environment, deliberately.
+  //
+  // A named `env.production` block alongside this top-level one made
+  // `wrangler deploy` ambiguous ("Multiple environments are defined ... but
+  // no target environment was specified"), and a named environment also
+  // renames the Worker to `<name>-<env>` unless overridden — which is how a
+  // deployment ends up looking for a project that does not exist.
+  //
+  // Local development does not use Wrangler at all: `npm run dev` runs the
+  // real Worker over a node:sqlite D1 stand-in, so there is no development
+  // environment here to keep separate. For a staging Worker, deploy with an
+  // explicit override rather than a second environment block:
+  //
+  //   npx wrangler deploy --name meet-millions-finance-staging
+  //
+  // See docs/deployment.md.
+  // ---------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------
+  // Static assets — the vanilla-JS SPA in /public is served by the Worker.
+  // API, webhook and file requests hit the Worker script first.
   // ---------------------------------------------------------------------
   "assets": {
     "directory": "./public",
@@ -19,20 +43,34 @@
   },
 
   // ---------------------------------------------------------------------
-  // D1 — relational multi-tenant datastore
-  // Replace database_id after `wrangler d1 create meetmillions_crm`
+  // D1 — the relational multi-tenant datastore. REQUIRED: the application
+  // cannot serve a single request without it.
+  //
+  // `database_id` below is a placeholder, NOT a real resource. Create the
+  // database and paste the id it prints:
+  //
+  //   npx wrangler d1 create meetmillions_crm
+  //
+  // `npm run deploy` refuses to run while the placeholder is still here —
+  // see scripts/preflight-deploy.mjs.
   // ---------------------------------------------------------------------
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "meetmillions_crm",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
       "migrations_dir": "database/migrations"
     }
   ],
 
   // ---------------------------------------------------------------------
-  // R2 — private document storage (client uploads, reports, recordings)
+  // R2 — private document storage (client uploads, reports, call
+  // recordings, voice notes). REQUIRED for any file handling.
+  //
+  //   npx wrangler r2 bucket create meetmillions-crm-documents
+  //   npx wrangler r2 bucket create meetmillions-crm-documents-preview
+  //
+  // Buckets are addressed by name, so there is no id to paste.
   // ---------------------------------------------------------------------
   "r2_buckets": [
     {
@@ -43,18 +81,32 @@
   ],
 
   // ---------------------------------------------------------------------
-  // KV — rate limiting counters, short-lived caches, idempotency keys
+  // KV — OPTIONAL. It accelerates rate-limit counters only.
+  //
+  // src/services/ratelimit.js prefers KV and falls back to the durable
+  // `rate_limits` table in D1 when no CACHE binding exists. The fallback is
+  // complete and exact — the limit still applies, it is simply one D1 write
+  // instead of one KV write. Nothing else in the codebase reads CACHE.
+  //
+  // The binding is left out rather than carrying a fake id: an all-zero
+  // namespace id is what made the last deployment fail with
+  // "KV namespace ... not found".
+  //
+  // To add it later (no code change needed — the binding is detected at
+  // runtime):
+  //
+  //   npx wrangler kv namespace create CACHE
+  //
+  // then uncomment and paste the id:
+  //
+  // "kv_namespaces": [
+  //   { "binding": "CACHE", "id": "<paste the id wrangler printed>" }
+  // ],
   // ---------------------------------------------------------------------
-  "kv_namespaces": [
-    {
-      "binding": "CACHE",
-      "id": "00000000000000000000000000000000",
-      "preview_id": "00000000000000000000000000000000"
-    }
-  ],
 
   // ---------------------------------------------------------------------
-  // Scheduled jobs — reminders, digests, retention, sync, nightly AI
+  // Scheduled jobs — reminders, digests, retention, sync, nightly AI.
+  // Handlers are in src/services/scheduler.js.
   // ---------------------------------------------------------------------
   "triggers": {
     "crons": [
@@ -65,45 +117,29 @@
   },
 
   // ---------------------------------------------------------------------
-  // Non-secret configuration. Secrets go in `wrangler secret put` / .dev.vars
+  // Non-secret configuration. Secrets go through `wrangler secret put`
+  // (production) or .dev.vars (local) and are never committed.
+  //
+  // APP_URL must be the origin this Worker is actually served from: it is
+  // used to build OAuth redirect URIs, e-mail links and white-label domain
+  // instructions. A wrong value breaks every OAuth flow.
+  //
+  // It is kept at the custom domain the rest of the repository already
+  // assumes — the OAuth redirect URIs in .env.example are all built on it.
+  // If this deployment is served from workers.dev instead, change it here
+  // AND re-register every redirect URI with Google, Microsoft and Dropbox;
+  // the two have to agree or the consent screens reject the callback.
   // ---------------------------------------------------------------------
   "vars": {
     "APP_NAME": "Meet Millions Finance CRM",
-    "APP_ENV": "development",
-    "APP_URL": "http://localhost:8787",
+    "APP_ENV": "production",
+    "APP_URL": "https://app.meetmillionscrm.in",
     "SESSION_TTL_HOURS": "12",
+    "IDLE_TIMEOUT_MINUTES": "60",
     "UPLOAD_MAX_BYTES": "52428800",
     "UPLOAD_ALLOWED_MIME": "application/pdf,image/jpeg,image/png,application/zip,application/x-zip-compressed,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "AUDIT_RETENTION_DAYS": "2555",
-    "DEMO_MODE": "true"
-  },
-
-  "env": {
-    "production": {
-      "vars": {
-        "APP_NAME": "Meet Millions Finance CRM",
-        "APP_ENV": "production",
-        "APP_URL": "https://app.meetmillionscrm.in",
-        "SESSION_TTL_HOURS": "12",
-        "UPLOAD_MAX_BYTES": "52428800",
-        "UPLOAD_ALLOWED_MIME": "application/pdf,image/jpeg,image/png,application/zip,application/x-zip-compressed,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "AUDIT_RETENTION_DAYS": "2555",
-        "DEMO_MODE": "false"
-      },
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "meetmillions_crm",
-          "database_id": "00000000-0000-0000-0000-000000000000",
-          "migrations_dir": "database/migrations"
-        }
-      ],
-      "r2_buckets": [
-        { "binding": "DOCS", "bucket_name": "meetmillions-crm-documents" }
-      ],
-      "kv_namespaces": [
-        { "binding": "CACHE", "id": "00000000000000000000000000000000" }
-      ]
-    }
+    "BACKUP_RETENTION_DAYS": "365",
+    "DEMO_MODE": "false"
   }
 }

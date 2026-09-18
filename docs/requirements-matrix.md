@@ -135,8 +135,12 @@ Repeated here so it is in one place. The reasoning is in
 [honesty.md](honesty.md#what-is-not-built).
 
 - The native mobile application (add-on 18)
-- Virus scanning of uploads
-- A Content-Security-Policy header
-- Anchoring the audit chain's head outside the database
+- A virus scanner. The integration and the four honest `scan_status` states
+  exist, and an infected file is refused before it reaches R2 — but no scanner
+  ships here, so an upload is recorded `skipped` until `VIRUS_SCAN_URL` points
+  at one
+- Anchoring the audit chain's head **outside** the database. The nightly anchor
+  now detects tail truncation; the anchors live in the same database, so an
+  attacker with write access to both tables can still rewrite them
 - Filing returns with the GST portal
 - Automated visual-regression comparison

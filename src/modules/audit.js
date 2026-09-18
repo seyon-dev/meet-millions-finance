@@ -17,7 +17,7 @@ import { BadRequestError, NotFoundError } from '../http/errors.js';
 import { Db, safeOrder } from '../db/client.js';
 import { scopeFor } from '../db/tenancy.js';
 import { addDays, nowIso } from '../utils/time.js';
-import { verifyChain, AUDIT_CATEGORIES, AUDITED_ACTIONS } from '../services/audit.js';
+import { verifyChain, verifyAgainstAnchor, AUDIT_CATEGORIES, AUDITED_ACTIONS } from '../services/audit.js';
 import { assertFeature } from '../services/features.js';
 import { escapeCsv } from '../utils/validate.js';
 
@@ -89,16 +89,29 @@ router.get('/verify', async (ctx) => {
   const limit = Math.min(ctx.qInt('limit', 5000), 20000);
   const result = await verifyChain(db, ctx.tenantId, { limit });
 
+  // The anchor is what makes truncation visible: the chain alone cannot see
+  // entries removed from its end, because what remains is still consistent.
+  const anchor = await verifyAgainstAnchor(db, ctx.tenantId);
+
   return ok({
     ...result,
+    anchor,
+    // Both must hold. A chain that verifies while the anchor says entries have
+    // gone is not an intact trail.
+    trustworthy: result.valid && (!anchor.covered || anchor.intact),
     checkedAt: nowIso(),
     explanation: result.valid
       ? `Every one of the ${result.checked} entries hashes to the value stored with the next, so no entry has been altered, and none has been removed from between entries ${result.firstSequence} and ${result.lastSequence}.`
       : 'The chain does not verify. The entry named below is the first that disagrees with its predecessor: either it was edited, or an entry before it was removed.',
-    // Said plainly rather than left for someone to assume otherwise: a hash
-    // chain cannot prove that entries were not deleted from the end. Compare
-    // the highest sequence against your own records to close that gap.
-    limitation: 'Entries removed from the end of the chain leave a shorter but internally consistent chain. This check cannot detect that; compare the last sequence against your own records.',
+    // What the two checks together do and do not prove, stated rather than
+    // left to be assumed.
+    limitation: anchor.covered
+      ? (anchor.intact
+          ? `Truncation is covered: the head was anchored at entry ${anchor.anchoredSequence} on ${anchor.anchoredAt}, and that entry is still present and unchanged. An attacker with direct database access could still rewrite the anchor itself.`
+          : anchor.reason)
+      : 'Entries removed from the end of the chain leave a shorter but internally consistent chain, '
+        + 'and no anchor has been written yet, so that cannot be detected. Anchors are written by the '
+        + 'daily scheduled job.',
   }, { ctx });
 }, { permission: 'audit.view' });
 

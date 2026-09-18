@@ -19,6 +19,7 @@ import { nowIso, addHours } from '../utils/time.js';
 import { audit } from '../services/audit.js';
 import { assertFeature } from '../services/features.js';
 import { WhatsAppProvider } from '../integrations/messaging.js';
+import { validateFlow, advance, NODE_TYPES } from '../services/chatbot.js';
 
 const router = createRouter();
 
@@ -503,6 +504,207 @@ function toMessage(m) {
 function safeJson(raw, fallback) {
   if (!raw) return fallback;
   try { return JSON.parse(raw); } catch { return fallback; }
+}
+
+// ---------------------------------------------------------------------------
+// Chatbot flows — the WhatsApp add-on's flow builder
+//
+// `chatbot_flows` was in the schema from the start with nothing able to read
+// or write it: no endpoint, no screen, and no path from an inbound message
+// into a flow. These routes are that missing surface; services/chatbot.js
+// interprets the graph and webhooks.js runs it on an inbound message.
+// ---------------------------------------------------------------------------
+
+router.get('/flows', async (ctx) => {
+  const scope = scopeFor(ctx);
+  const rows = await scope.all('chatbot_flows', {}, { order: 'created_at DESC' });
+  return ok({
+    flows: rows.map(toFlow),
+    nodeTypes: NODE_TYPES,
+  }, { ctx });
+}, { permission: 'messaging.view' });
+
+router.get('/flows/:id', async (ctx) => {
+  const scope = scopeFor(ctx);
+  const row = await scope.getOrFail('chatbot_flows', ctx.params.id, { resource: 'Chatbot flow' });
+
+  // How many threads are sitting inside this flow right now — the number that
+  // says whether deactivating it would strand a live conversation.
+  const active = await scope.rawCount(
+    'SELECT COUNT(*) AS n FROM chat_threads WHERE tenant_id = ? AND bot_flow_id = ?',
+    [ctx.tenantId, row.id]);
+
+  return ok({ flow: toFlow(row), activeConversations: active }, { ctx });
+}, { permission: 'messaging.view' });
+
+router.post('/flows', async (ctx) => {
+  const scope = scopeFor(ctx);
+  await assertFeature(ctx, 'whatsapp_integration');
+
+  const body = await ctx.body();
+  const input = validate(body, {
+    name: { type: 'string', required: true, max: 120 },
+    description: { type: 'text', max: 500 },
+    triggerKeywords: { type: 'array', required: true, max: 20, of: { type: 'string' } },
+    nodes: { type: 'array', required: true, max: 60 },
+    entryNodeId: { type: 'string', required: true, max: 60 },
+    isActive: { type: 'boolean', default: false },
+    fallbackToHuman: { type: 'boolean', default: true },
+  });
+
+  // A flow with a dangling jump is a conversation that dead-ends on a client.
+  const check = validateFlow({ nodes: input.nodes, entryNodeId: input.entryNodeId });
+  if (!check.valid) {
+    throw new BadRequestError(`That flow will not run: ${check.errors.join(' ')}`);
+  }
+
+  const row = await scope.insert('chatbot_flows', {
+    id: ID.flow(),
+    name: input.name.trim(),
+    description: input.description ?? null,
+    trigger_keywords_json: JSON.stringify(input.triggerKeywords.map(k => String(k).trim()).filter(Boolean)),
+    nodes_json: JSON.stringify(input.nodes),
+    entry_node_id: input.entryNodeId,
+    is_active: input.isActive ? 1 : 0,
+    fallback_to_human: input.fallbackToHuman ? 1 : 0,
+  });
+
+  await audit(ctx, {
+    action: 'messaging.flow_created', category: 'communication',
+    entityType: 'chatbot_flow', entityId: row.id, entityLabel: row.name,
+    newValue: { nodes: input.nodes.length, active: input.isActive },
+  });
+
+  return created({ flow: toFlow(row) }, { ctx });
+}, { permission: 'messaging.templates' });
+
+router.patch('/flows/:id', async (ctx) => {
+  const scope = scopeFor(ctx);
+  const row = await scope.getOrFail('chatbot_flows', ctx.params.id, { resource: 'Chatbot flow' });
+
+  const body = await ctx.body();
+  const input = validate(body, {
+    name: { type: 'string', max: 120 },
+    description: { type: 'text', max: 500 },
+    triggerKeywords: { type: 'array', max: 20, of: { type: 'string' } },
+    nodes: { type: 'array', max: 60 },
+    entryNodeId: { type: 'string', max: 60 },
+    isActive: { type: 'boolean' },
+    fallbackToHuman: { type: 'boolean' },
+  });
+
+  // Re-validate against whatever the graph will be after this patch, not just
+  // what was sent: changing the entry node alone can orphan it.
+  const nodes = input.nodes ?? safeJson(row.nodes_json, []);
+  const entry = input.entryNodeId ?? row.entry_node_id;
+  if (input.nodes || input.entryNodeId) {
+    const check = validateFlow({ nodes, entryNodeId: entry });
+    if (!check.valid) throw new BadRequestError(`That flow will not run: ${check.errors.join(' ')}`);
+  }
+
+  const patch = {};
+  if (input.name) patch.name = input.name.trim();
+  if (input.description !== null) patch.description = input.description;
+  if (input.triggerKeywords) {
+    patch.trigger_keywords_json = JSON.stringify(input.triggerKeywords.map(k => String(k).trim()).filter(Boolean));
+  }
+  if (input.nodes) patch.nodes_json = JSON.stringify(input.nodes);
+  if (input.entryNodeId) patch.entry_node_id = input.entryNodeId;
+  if (input.isActive !== null) patch.is_active = input.isActive ? 1 : 0;
+  if (input.fallbackToHuman !== null) patch.fallback_to_human = input.fallbackToHuman ? 1 : 0;
+
+  if (!Object.keys(patch).length) return ok({ flow: toFlow(row), changed: false }, { ctx });
+
+  await scope.update('chatbot_flows', row.id, patch);
+  const updated = await scope.first('chatbot_flows', { id: row.id });
+
+  await audit(ctx, {
+    action: 'messaging.flow_updated', category: 'communication',
+    entityType: 'chatbot_flow', entityId: row.id, entityLabel: updated.name,
+    oldValue: { active: !!row.is_active }, newValue: { active: !!updated.is_active },
+  });
+
+  return ok({ flow: toFlow(updated), changed: true }, { ctx });
+}, { permission: 'messaging.templates' });
+
+router.delete('/flows/:id', async (ctx) => {
+  const scope = scopeFor(ctx);
+  const row = await scope.getOrFail('chatbot_flows', ctx.params.id, { resource: 'Chatbot flow' });
+
+  // Any thread mid-flow is released to a person rather than left pointing at a
+  // flow that no longer exists.
+  const db = new Db(ctx.env.DB);
+  await db.run(
+    `UPDATE chat_threads SET bot_flow_id = NULL, bot_node_id = NULL, bot_handed_over = 1
+      WHERE tenant_id = ? AND bot_flow_id = ?`, [ctx.tenantId, row.id]);
+  await scope.delete('chatbot_flows', row.id);
+
+  await audit(ctx, {
+    action: 'messaging.flow_deleted', category: 'communication',
+    entityType: 'chatbot_flow', entityId: row.id, entityLabel: row.name,
+  });
+
+  return ok({ id: row.id, removed: true }, { ctx });
+}, { permission: 'messaging.templates' });
+
+/**
+ * Walk a flow without sending anything.
+ *
+ * The only honest way to check a flow is to run it, and the only safe way to
+ * run it is against nobody. This replays a list of replies through the graph
+ * and returns what the bot would have said at each step.
+ */
+router.post('/flows/:id/simulate', async (ctx) => {
+  const scope = scopeFor(ctx);
+  const row = await scope.getOrFail('chatbot_flows', ctx.params.id, { resource: 'Chatbot flow' });
+
+  const body = await ctx.body();
+  const input = validate(body, {
+    replies: { type: 'array', max: 20, of: { type: 'string' }, default: [] },
+  });
+
+  const transcript = [];
+  let nodeId = row.entry_node_id;
+  let handedOver = false;
+
+  // The opening turn, before the person has said anything.
+  let step = await advance(ctx, { flow: row, nodeId, text: null, thread: null });
+  if (step.reply) transcript.push({ from: 'bot', text: step.reply });
+  nodeId = step.nextNodeId;
+  handedOver = step.handover;
+
+  for (const reply of input.replies ?? []) {
+    if (handedOver || !nodeId) break;
+    transcript.push({ from: 'client', text: reply });
+    step = await advance(ctx, { flow: row, nodeId, text: reply, thread: null });
+    if (step.reply) transcript.push({ from: 'bot', text: step.reply });
+    nodeId = step.nextNodeId;
+    handedOver = step.handover;
+  }
+
+  return ok({
+    transcript,
+    handedOver,
+    endedAt: nodeId,
+    note: handedOver
+      ? 'The bot handed the conversation to a person at this point.'
+      : 'The bot is waiting for the next reply.',
+  }, { ctx });
+}, { permission: 'messaging.view' });
+
+function toFlow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    triggerKeywords: safeJson(row.trigger_keywords_json, []),
+    nodes: safeJson(row.nodes_json, []),
+    entryNodeId: row.entry_node_id,
+    isActive: !!row.is_active,
+    fallbackToHuman: !!row.fallback_to_human,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 export { router as messagingRouter };

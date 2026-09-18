@@ -13,7 +13,7 @@
 import { createRouter } from '../http/router.js';
 import { ok, created, paginated } from '../http/response.js';
 import {
-  BadRequestError, ForbiddenError, NotFoundError, IntegrationError,
+  BadRequestError, ForbiddenError, NotFoundError, IntegrationError, ConflictError,
 } from '../http/errors.js';
 import { Db, safeOrder } from '../db/client.js';
 import { scopeFor } from '../db/tenancy.js';
@@ -321,6 +321,232 @@ router.get('/:key/logs', async (ctx) => {
 
   return paginated(rows.map(toSyncLog), { page, pageSize, total }, ctx);
 }, { permission: 'integrations.view' });
+
+// ---------------------------------------------------------------------------
+// Cloud storage folder mappings — where verified documents are mirrored
+//
+// services/cloud-sync.js has always known how to push a document into Google
+// Drive, Dropbox or OneDrive: it reads storage_folder_maps, matches the
+// document against each map's scope, and queues it. But nothing could WRITE a
+// map — no endpoint, no screen — so the query returned nothing on every
+// deployment and three paid add-ons (15, 16, 17) silently did nothing.
+// ---------------------------------------------------------------------------
+
+const STORAGE_PROVIDERS = ['google_drive', 'dropbox', 'onedrive'];
+
+router.get('/storage/folders', async (ctx) => {
+  const scope = scopeFor(ctx);
+  const where = scope.where('storage_folder_maps', 'm');
+  where.eqIf('m.provider', ctx.q('provider'));
+  where.eqIf('m.scope_type', ctx.q('scopeType'));
+
+  const rows = await scope.raw(
+    `SELECT m.*, c.display_name AS client_name, co.name AS company_name,
+            i.status AS integration_status
+       FROM storage_folder_maps m
+       LEFT JOIN clients c ON c.id = m.scope_id AND m.scope_type = 'client'
+       LEFT JOIN companies co ON co.id = m.scope_id AND m.scope_type = 'company'
+       LEFT JOIN integrations i ON i.id = m.integration_id
+      WHERE m.tenant_id = ?
+      ORDER BY m.created_at DESC`, [ctx.tenantId]);
+
+  // Pending work per map, so a screen can say whether sync is actually moving.
+  const pending = await scope.raw(
+    `SELECT map_id, COUNT(*) AS n FROM storage_sync_items
+      WHERE tenant_id = ? AND status IN ('pending','retrying')
+      GROUP BY map_id`, [ctx.tenantId]);
+  const pendingByMap = new Map(pending.map(r => [r.map_id, Number(r.n)]));
+
+  return ok({
+    folders: rows.map(r => toFolderMap(r, pendingByMap.get(r.id) ?? 0)),
+    providers: STORAGE_PROVIDERS,
+    syncTriggers: ['upload', 'verified', 'approved'],
+    scopeTypes: ['tenant', 'company', 'client'],
+  }, { ctx });
+}, { permission: 'integrations.view' });
+
+router.post('/storage/folders', async (ctx) => {
+  const scope = scopeFor(ctx);
+  const body = await ctx.body();
+  const input = validate(body, {
+    provider: { type: 'enum', values: STORAGE_PROVIDERS, required: true },
+    remotePath: { type: 'string', required: true, max: 400 },
+    remoteFolderId: { type: 'string', max: 200 },
+    scopeType: { type: 'enum', values: ['tenant', 'company', 'client'], default: 'tenant' },
+    scopeId: { type: 'id' },
+    syncOn: { type: 'enum', values: ['upload', 'verified', 'approved'], default: 'verified' },
+    autoSync: { type: 'boolean', default: true },
+    preserveVersions: { type: 'boolean', default: true },
+  });
+
+  if (input.scopeType !== 'tenant' && !input.scopeId) {
+    throw new BadRequestError(`A ${input.scopeType} mapping needs the ${input.scopeType} it applies to.`);
+  }
+  if (input.scopeType === 'client') {
+    await scope.getOrFail('clients', input.scopeId, { resource: 'Client' });
+  }
+  if (input.scopeType === 'company') {
+    await scope.getOrFail('companies', input.scopeId, { resource: 'Company' });
+  }
+
+  // The vendor has to be linked, or the map would point nowhere. Saying so
+  // here is better than queueing documents that can never be delivered.
+  const integration = await scope.first('integrations', { provider: input.provider });
+  if (!integration) {
+    throw new IntegrationError(input.provider,
+      `${input.provider.replace(/_/g, ' ')} is not connected on this deployment. Connect the account first.`);
+  }
+  if (integration.status !== 'connected') {
+    throw new IntegrationError(input.provider,
+      `${input.provider.replace(/_/g, ' ')} is ${integration.status}. Reconnect it before mapping a folder.`);
+  }
+
+  const duplicate = await scope.rawOne(
+    `SELECT id FROM storage_folder_maps
+      WHERE tenant_id = ? AND provider = ? AND scope_type = ? AND COALESCE(scope_id,'') = ?`,
+    [ctx.tenantId, input.provider, input.scopeType, input.scopeId ?? '']);
+  if (duplicate) {
+    throw new ConflictError('That provider already has a folder mapped for this scope.');
+  }
+
+  const row = await scope.insert('storage_folder_maps', {
+    id: ID.folderMap(),
+    integration_id: integration.id,
+    provider: input.provider,
+    scope_type: input.scopeType,
+    scope_id: input.scopeId ?? null,
+    remote_folder_id: input.remoteFolderId ?? null,
+    remote_path: input.remotePath.trim(),
+    auto_sync: input.autoSync ? 1 : 0,
+    sync_on: input.syncOn,
+    preserve_versions: input.preserveVersions ? 1 : 0,
+  });
+
+  await audit(ctx, {
+    action: 'integrations.folder_mapped', category: 'integrations',
+    entityType: 'storage_folder_map', entityId: row.id,
+    entityLabel: `${input.provider} → ${input.remotePath}`,
+    newValue: { provider: input.provider, scopeType: input.scopeType, syncOn: input.syncOn },
+  });
+
+  return created({ folder: toFolderMap(row, 0) }, { ctx });
+}, { permission: 'integrations.manage' });
+
+router.patch('/storage/folders/:id', async (ctx) => {
+  const scope = scopeFor(ctx);
+  const row = await scope.getOrFail('storage_folder_maps', ctx.params.id, { resource: 'Folder mapping' });
+
+  const body = await ctx.body();
+  const input = validate(body, {
+    remotePath: { type: 'string', max: 400 },
+    remoteFolderId: { type: 'string', max: 200 },
+    syncOn: { type: 'enum', values: ['upload', 'verified', 'approved'] },
+    autoSync: { type: 'boolean' },
+    preserveVersions: { type: 'boolean' },
+  });
+
+  const patch = {};
+  if (input.remotePath) patch.remote_path = input.remotePath.trim();
+  if (input.remoteFolderId !== null) patch.remote_folder_id = input.remoteFolderId;
+  if (input.syncOn) patch.sync_on = input.syncOn;
+  if (input.autoSync !== null) patch.auto_sync = input.autoSync ? 1 : 0;
+  if (input.preserveVersions !== null) patch.preserve_versions = input.preserveVersions ? 1 : 0;
+
+  if (!Object.keys(patch).length) {
+    return ok({ folder: toFolderMap(row, 0), changed: false }, { ctx });
+  }
+
+  await scope.update('storage_folder_maps', row.id, patch);
+  const updated = await scope.first('storage_folder_maps', { id: row.id });
+
+  await audit(ctx, {
+    action: 'integrations.folder_updated', category: 'integrations',
+    entityType: 'storage_folder_map', entityId: row.id,
+    entityLabel: `${row.provider} → ${updated.remote_path}`,
+    oldValue: { remotePath: row.remote_path, syncOn: row.sync_on, autoSync: !!row.auto_sync },
+    newValue: { remotePath: updated.remote_path, syncOn: updated.sync_on, autoSync: !!updated.auto_sync },
+  });
+
+  return ok({ folder: toFolderMap(updated, 0), changed: true }, { ctx });
+}, { permission: 'integrations.manage' });
+
+router.delete('/storage/folders/:id', async (ctx) => {
+  const scope = scopeFor(ctx);
+  const row = await scope.getOrFail('storage_folder_maps', ctx.params.id, { resource: 'Folder mapping' });
+
+  // Queued items belong to the map; leaving them would strand rows pointing at
+  // a mapping that no longer exists.
+  const dropped = await scope.rawOne(
+    `SELECT COUNT(*) AS n FROM storage_sync_items
+      WHERE tenant_id = ? AND map_id = ? AND status IN ('pending','retrying')`,
+    [ctx.tenantId, row.id]);
+
+  const db = new Db(ctx.env.DB);
+  await db.run('DELETE FROM storage_sync_items WHERE tenant_id = ? AND map_id = ?', [ctx.tenantId, row.id]);
+  await scope.delete('storage_folder_maps', row.id);
+
+  await audit(ctx, {
+    action: 'integrations.folder_unmapped', category: 'integrations',
+    entityType: 'storage_folder_map', entityId: row.id,
+    entityLabel: `${row.provider} → ${row.remote_path}`,
+    oldValue: { provider: row.provider, remotePath: row.remote_path, queuedDropped: Number(dropped?.n) || 0 },
+  });
+
+  return ok({ id: row.id, removed: true, queuedDropped: Number(dropped?.n) || 0 }, { ctx });
+}, { permission: 'integrations.manage' });
+
+/** The sync queue for one mapping — what moved, what is waiting, what failed. */
+router.get('/storage/folders/:id/queue', async (ctx) => {
+  const scope = scopeFor(ctx);
+  const row = await scope.getOrFail('storage_folder_maps', ctx.params.id, { resource: 'Folder mapping' });
+  const { page, pageSize } = ctx.pagination({ defaultSize: 25, maxSize: 100 });
+
+  const where = scope.where('storage_sync_items', 's');
+  where.add('s.map_id = ?', row.id);
+  where.eqIf('s.status', ctx.q('status'));
+
+  const { rows, total } = await scope.paginate('storage_sync_items', where, {
+    columns: 's.*, d.title AS document_title',
+    joins: 'LEFT JOIN documents d ON d.id = s.document_id',
+    alias: 's',
+    orderBy: 's.created_at DESC',
+    page, pageSize,
+  });
+
+  return paginated(rows.map(r => ({
+    id: r.id,
+    documentId: r.document_id,
+    documentTitle: r.document_title ?? null,
+    status: r.status,
+    attempts: Number(r.attempts) || 0,
+    error: r.error ?? null,
+    remoteFileId: r.remote_file_id ?? null,
+    syncedAt: r.synced_at ?? null,
+    createdAt: r.created_at,
+  })), { page, pageSize, total }, ctx);
+}, { permission: 'integrations.view' });
+
+function toFolderMap(row, pendingCount) {
+  return {
+    id: row.id,
+    provider: row.provider,
+    integrationId: row.integration_id,
+    integrationStatus: row.integration_status ?? null,
+    scopeType: row.scope_type,
+    scopeId: row.scope_id,
+    scopeLabel: row.scope_type === 'tenant'
+      ? 'Every client'
+      : (row.client_name ?? row.company_name ?? row.scope_id),
+    remotePath: row.remote_path,
+    remoteFolderId: row.remote_folder_id,
+    autoSync: !!row.auto_sync,
+    syncOn: row.sync_on,
+    preserveVersions: !!row.preserve_versions,
+    pendingCount,
+    lastSyncAt: row.last_sync_at ?? null,
+    createdAt: row.created_at,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Field mappings — how a vendor's fields land on ours

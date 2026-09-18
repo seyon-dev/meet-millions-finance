@@ -15,7 +15,7 @@ import { Db } from '../db/client.js';
 import { platformScope } from '../db/tenancy.js';
 import { nowIso, addDays, monthKey, dayKey, daysBetween, recentMonthKeys } from '../utils/time.js';
 import { logSystemEvent } from './logging.js';
-import { purgeExpiredAuditLogs } from './audit.js';
+import { purgeExpiredAuditLogs, anchorChain } from './audit.js';
 import { purgeExpiredSessions } from '../auth/session.js';
 import { purgeRateLimits } from './ratelimit.js';
 import { purgeSystemLogs } from './logging.js';
@@ -60,6 +60,7 @@ function selectJobs(cron) {
     ['openFilingPeriods', openMonthlyFilingPeriods],
     ['subscriptionRenewals', flagSubscriptionRenewals],
     ['retention', runRetention],
+    ['anchorAuditChains', anchorAuditChains],
     ['scheduledReports', runScheduledReports],
     ['nightlyInsights', generateNightlyInsights],
     ['storageSync', retryStorageSync],
@@ -365,6 +366,43 @@ async function runRetention(env) {
   }
 
   return { auditPurged, sessionsPurged, rateLimitsPurged, logsPurged, recordingsExpired: recordings.length };
+}
+
+/**
+ * Anchor every tenant's audit chain, and the platform's.
+ *
+ * Deliberately ordered AFTER retention in the daily run: retention purges
+ * expired entries, and anchoring a chain before that purge would record a head
+ * the purge then invalidates.
+ *
+ * A tenant whose chain has shrunk is not anchored — the refusal is the signal.
+ * It is logged at error level, because entries disappearing from an audit trail
+ * is exactly the thing somebody needs to be told about.
+ */
+async function anchorAuditChains(env) {
+  const db = new Db(env.DB);
+  const tenants = await db.many('SELECT id FROM tenants WHERE deleted_at IS NULL');
+
+  let anchored = 0;
+  const shrank = [];
+
+  // null covers the platform's own chain, which has no tenant.
+  for (const tenantId of [null, ...tenants.map(t => t.id)]) {
+    const result = await anchorChain(db, tenantId);
+    if (result.anchored) { anchored += 1; continue; }
+    if (result.reason === 'chain_shrank') {
+      shrank.push({ tenantId, ...result });
+      await logSystemEvent(env, {
+        level: 'error', source: 'cron', event: 'audit_chain_shrank',
+        message: `Audit chain for ${tenantId ?? 'the platform'} is shorter than its last anchor: `
+          + `${result.previousSequence} → ${result.currentSequence}. Entries have been removed from the end.`,
+        tenantId,
+        context: result,
+      });
+    }
+  }
+
+  return { anchored, shrank: shrank.length, tenants: tenants.length + 1 };
 }
 
 async function runScheduledReports(env) {

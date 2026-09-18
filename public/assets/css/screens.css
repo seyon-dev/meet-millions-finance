@@ -895,3 +895,6 @@
   .mm-voicerec__meta .mm-field { min-width: 0; flex: 1 1 100%; }
   .mm-voicenote__player { max-width: 100%; }
 }
+
+/* A chatbot-flow simulation has no timestamps — speaker and text only. */
+.mm-transcript--sim .mm-transcript__line { grid-template-columns: 72px minmax(0, 1fr); }
