@@ -52,10 +52,25 @@ export async function dispatchNotification(ctx, {
   triggerKey, tenantId, userId, userIds, clientId = null,
   variables = {}, channels = null, link = null, entityType = null, entityId = null,
   toEmail = null, toPhone = null,
+  // Automation rules are evaluated from here because this is the one place
+  // every business event in the system already passes through. A rule's own
+  // `notify` action passes false, or it would re-enter the engine for ever.
+  runRules = true,
+  automationPayload = null,
 }) {
   const db = new Db(ctx.env.DB);
   const tid = tenantId ?? ctx.tenantId;
   const trigger = TRIGGER_MAP.get(triggerKey);
+
+  // Before the early returns below: a rule fires on the event itself, not
+  // only when the event also happened to have somebody to notify.
+  if (runRules && tid) {
+    const { runAutomation } = await import('./automation.js');
+    await runAutomation({ ...ctx, tenantId: tid }, triggerKey, {
+      clientId, entityType, entityId, userId: userId ?? null, variables,
+      ...(automationPayload ?? {}),
+    });
+  }
 
   const summary = { trigger: triggerKey, sent: 0, skipped: 0, failed: 0, notConfigured: 0 };
   const deliveries = [];

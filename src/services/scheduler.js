@@ -16,6 +16,7 @@ import { platformScope } from '../db/tenancy.js';
 import { nowIso, addDays, monthKey, dayKey, daysBetween, recentMonthKeys } from '../utils/time.js';
 import { logSystemEvent } from './logging.js';
 import { purgeExpiredAuditLogs, anchorChain } from './audit.js';
+import { runDueAutomationJobs } from './automation.js';
 import { purgeExpiredSessions } from '../auth/session.js';
 import { purgeRateLimits } from './ratelimit.js';
 import { purgeSystemLogs } from './logging.js';
@@ -50,6 +51,9 @@ export async function runScheduled(event, env) {
 
 function selectJobs(cron) {
   const frequent = [
+    // Delayed automation runs on the frequent pass: a rule that says
+    // "in 30 minutes" cannot wait for the nightly run.
+    ['automationJobs', runDueAutomationJobs],
     ['dueReminders', sendDueReminders],
     ['overdueInvoices', flagOverdueInvoices],
     ['slaBreaches', flagSlaBreaches],

@@ -16,11 +16,13 @@ import { Db, safeOrder } from '../db/client.js';
 import { scopeFor } from '../db/tenancy.js';
 import { validate } from '../utils/validate.js';
 import { ID } from '../utils/id.js';
-import { nowIso, addMinutes } from '../utils/time.js';
+import { nowIso } from '../utils/time.js';
 import { audit } from '../services/audit.js';
 import { assertFeature, hasFeature } from '../services/features.js';
-import { dispatchNotification } from '../services/notifications.js';
 import { NOTIFICATION_TRIGGERS, TRIGGER_MAP } from '../data/notification-triggers.js';
+// The same matcher the engine uses, so a preview cannot disagree with what
+// the rule will actually do.
+import { matchesConditions } from '../services/automation.js';
 
 const router = createRouter();
 
@@ -175,130 +177,15 @@ router.post('/:id/preview', async (ctx) => {
   }, { ctx });
 }, { anyPermission: ['automation.manage', 'settings.view'] });
 
+
 // ---------------------------------------------------------------------------
-// The evaluator, called by the modules that emit events
+// Route helpers
+//
+// These stay here rather than in the engine: they validate and describe a rule
+// for the person editing it, which is a concern of the screen, not of running
+// the rule. `sampleMatches` uses the engine's matcher so the dry run and the
+// real evaluation cannot drift apart.
 // ---------------------------------------------------------------------------
-
-/**
- * Run every active rule for one trigger.
- *
- * Failures are contained per rule: one broken action must not stop the others,
- * and must never fail the business operation that emitted the event.
- */
-export async function runAutomation(ctx, triggerKey, payload = {}) {
-  const scope = scopeFor(ctx);
-  const rules = await scope.all('automation_rules',
-    { trigger_key: triggerKey, is_active: 1 }, { limit: 50 });
-  if (!rules.length) return { fired: 0, rules: [] };
-
-  const outcomes = [];
-  for (const rule of rules) {
-    try {
-      const conditions = safeJson(rule.conditions_json, {});
-      if (!matchesConditions(conditions, payload)) {
-        outcomes.push({ rule: rule.name, fired: false, reason: 'conditions not met' });
-        continue;
-      }
-
-      // A delayed rule is not run now. Pretending otherwise would make the
-      // "wait 2 days then remind" rule fire immediately.
-      if (rule.delay_minutes > 0) {
-        outcomes.push({
-          rule: rule.name, fired: false,
-          reason: `scheduled for ${addMinutes(rule.delay_minutes)}`,
-          scheduledFor: addMinutes(rule.delay_minutes),
-        });
-        continue;
-      }
-
-      const actions = safeJson(rule.actions_json, []);
-      const results = [];
-      for (const action of actions) {
-        results.push(await executeAction(ctx, scope, action, payload));
-      }
-
-      await scope.update('automation_rules', rule.id, {
-        fire_count: (rule.fire_count ?? 0) + 1,
-        last_fired_at: nowIso(),
-      });
-      outcomes.push({ rule: rule.name, fired: true, actions: results });
-    } catch (err) {
-      // Logged, not thrown: an automation rule must never break the upload or
-      // the payment that triggered it.
-      console.warn('automation rule failed', { rule: rule.id, message: err.message });
-      outcomes.push({ rule: rule.name, fired: false, error: err.message });
-    }
-  }
-
-  return { fired: outcomes.filter(o => o.fired).length, rules: outcomes };
-}
-
-async function executeAction(ctx, scope, action, payload) {
-  switch (action.type) {
-    case 'notify': {
-      const result = await dispatchNotification(ctx, {
-        triggerKey: action.triggerKey ?? 'document.uploaded',
-        userId: action.recipient === 'assignee' ? payload.assignedTo : (action.userId ?? payload.userId),
-        clientId: payload.clientId ?? null,
-        channels: action.channels ?? null,
-        variables: payload.variables ?? {},
-      });
-      return { type: 'notify', sent: result.summary.sent, skipped: result.summary.skipped };
-    }
-    case 'create_task': {
-      if (!payload.clientId && !action.assignTo) return { type: 'create_task', skipped: 'no target' };
-      const task = await scope.insert('tasks', {
-        id: ID.task(),
-        client_id: payload.clientId ?? null,
-        company_id: payload.companyId ?? null,
-        title: renderTemplate(action.title ?? 'Automated task', payload),
-        type: 'automation',
-        status: 'todo',
-        priority: action.priority ?? 'normal',
-        assigned_to: action.assignTo === 'assignee' ? payload.assignedTo : (action.userId ?? null),
-        created_by: null,
-        due_at: action.dueInDays ? addMinutes(action.dueInDays * 24 * 60) : null,
-        source_type: 'automation',
-        source_id: payload.entityId ?? null,
-      });
-      return { type: 'create_task', taskId: task.id };
-    }
-    case 'assign': {
-      if (!payload.entityTable || !payload.entityId || !action.userId) {
-        return { type: 'assign', skipped: 'no target' };
-      }
-      await scope.update(payload.entityTable, payload.entityId, { assigned_to: action.userId });
-      return { type: 'assign', userId: action.userId };
-    }
-    case 'set_status': {
-      if (!payload.entityTable || !payload.entityId || !action.status) {
-        return { type: 'set_status', skipped: 'no target' };
-      }
-      await scope.update(payload.entityTable, payload.entityId, { status: action.status });
-      return { type: 'set_status', status: action.status };
-    }
-    default:
-      return { type: action.type, skipped: 'unsupported' };
-  }
-}
-
-/** Conditions are a flat AND of field comparisons — readable, and enough. */
-function matchesConditions(conditions, payload) {
-  for (const [field, expected] of Object.entries(conditions ?? {})) {
-    const actual = payload[field];
-    if (Array.isArray(expected)) {
-      if (!expected.includes(actual)) return false;
-    } else if (expected !== null && typeof expected === 'object') {
-      if (expected.gt !== undefined && !(Number(actual) > Number(expected.gt))) return false;
-      if (expected.lt !== undefined && !(Number(actual) < Number(expected.lt))) return false;
-      if (expected.contains !== undefined
-        && !String(actual ?? '').toLowerCase().includes(String(expected.contains).toLowerCase())) return false;
-    } else if (actual !== expected) {
-      return false;
-    }
-  }
-  return true;
-}
 
 async function validateActions(ctx, actions) {
   const out = [];
@@ -353,9 +240,13 @@ function describeAction(action) {
   return meta?.name ?? action.type;
 }
 
-function renderTemplate(text, payload) {
-  return String(text).replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_, key) => String(payload[key] ?? ''));
-}
+// ---------------------------------------------------------------------------
+// Serialisation
+//
+// The evaluator is not here. It lives in services/automation.js, because what
+// runs it is the event lifecycle rather than an HTTP request — see the note at
+// the top of that file.
+// ---------------------------------------------------------------------------
 
 function toRule(r) {
   return {
