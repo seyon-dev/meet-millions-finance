@@ -438,4 +438,59 @@ describe('Platform services', () => {
     assert.ok(!row.config_json.includes('somebody-pasted-a-real-secret-here'));
     assert.ok(!row.config_json.includes('and-a-token-too'));
   });
+
+  // -- Platform revenue -----------------------------------------------------
+
+  test('run rate is attributed only to plans somebody is actually on', async () => {
+    const app = await createApp({
+      env: {
+        PLATFORM_OWNER_EMAIL: 'owner@meetmillions.test',
+        PLATFORM_OWNER_PASSWORD: 'A-Long-Enough-Passw0rd',
+      },
+    });
+    const { res } = await registerOrg(app);
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    const tenantId = await firstTenantId(app);
+    await setPlan(app, tenantId, 'pro');
+
+    // The seeded owner is locked to the change-password screen until it picks
+    // its own, which is the point of seeding it that way.
+    let owner = await tokenFor(app, {
+      email: 'owner@meetmillions.test', password: 'A-Long-Enough-Passw0rd',
+    });
+    const locked = await app.request('/api/platform/revenue', { token: owner });
+    assert.equal(locked.status, 403, 'nothing is reachable before the password is changed');
+
+    const changed = await app.request('/api/auth/change-password', {
+      method: 'POST', token: owner,
+      body: { currentPassword: 'A-Long-Enough-Passw0rd', newPassword: 'Another-Str0ng-Passw0rd' },
+    });
+    assert.equal(changed.status, 200, JSON.stringify(changed.body));
+    owner = await tokenFor(app, {
+      email: 'owner@meetmillions.test', password: 'Another-Str0ng-Passw0rd',
+    });
+
+    const revenue = await app.request('/api/platform/revenue', { token: owner });
+    assert.equal(revenue.status, 200, JSON.stringify(revenue.body));
+
+    const byPlan = revenue.data.byPlan ?? [];
+    assert.ok(byPlan.length >= 4, 'every plan is listed');
+
+    for (const plan of byPlan) {
+      if (plan.tenants === 0) {
+        // The bug this guards: a LEFT JOIN yields a row for a plan nobody is
+        // on, so a plain SUM reported that plan's price as revenue from
+        // nobody.
+        assert.equal(plan.mrrPaise, 0,
+          `${plan.name} has no organisations, so it earns nothing`);
+      } else {
+        assert.ok(plan.mrrPaise > 0, `${plan.name} has ${plan.tenants} and must earn something`);
+      }
+    }
+
+    const pro = byPlan.find(p => p.key === 'pro');
+    assert.equal(pro.tenants, 1);
+    assert.equal(pro.mrrPaise, revenue.data.mrr.planPaise,
+      'the one subscribed plan accounts for the whole plan run rate');
+  });
 });

@@ -35,7 +35,7 @@ export default async function reconciliationScreen({ query }) {
 
   const periodSelect = el('select.mm-select',
     ...recentPeriods().map(p => el('option', {
-      value: p, text: fmt.label(p), selected: p === query.get('periodKey'),
+      value: p, text: fmt.period(p), selected: p === query.get('periodKey'),
     })));
 
   const form = el('form.mm-row.mm-gap-3.mm-wrap.mm-center', {
@@ -96,7 +96,7 @@ function result(data) {
   return [
     data.reconciled
       ? banner({
-          text: `${data.client.displayName} reconciles for ${fmt.label(data.periodKey)} — every verified document has tax lines, and every tax line sits on a verified document.`,
+          text: `${data.client.displayName} reconciles for ${fmt.period(data.periodKey)} — every verified document has tax lines, and every tax line sits on a verified document.`,
           tone: 'success',
           icon: 'check-circle',
         })

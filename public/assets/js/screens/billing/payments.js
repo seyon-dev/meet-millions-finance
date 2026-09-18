@@ -50,7 +50,11 @@ export default async function paymentsScreen({ query }) {
       }),
       selectFilter({
         label: 'Method',
-        options: ['upi', 'card', 'netbanking', 'bank_transfer', 'cash', 'cheque', 'wallet']
+        // Exactly the values the column allows. 'card' and 'netbanking' were
+        // offered and match nothing — the schema says credit_card, debit_card
+        // and net_banking.
+        options: ['upi', 'credit_card', 'debit_card', 'net_banking', 'wallet',
+          'emi', 'bank_transfer', 'cash', 'cheque']
           .map(m => ({ value: m, label: fmt.label(m) })),
         value: active.method ?? '',
         onChange: v => apply('method', v),
@@ -82,7 +86,7 @@ export default async function paymentsScreen({ query }) {
           el('div.mm-stack',
             el('span.mm-fw-medium.mm-mono', { text: row.referenceNo }),
             el('span.mm-muted.mm-text-xs', {
-              text: [fmt.label(row.method), row.gateway !== 'offline' ? fmt.label(row.gateway) : 'Offline']
+              text: [fmt.label(row.method), row.gateway !== 'offline' ? fmt.vendor(row.gateway) : 'Offline']
                 .filter(Boolean).join(' · '),
             }))),
       },

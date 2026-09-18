@@ -46,7 +46,7 @@ function build(data, reload) {
   return [
     pageHead({
       title: doc.title,
-      subtitle: [client?.display_name, type?.name, fmt.label(doc.periodKey)].filter(Boolean).join(' · '),
+      subtitle: [client?.display_name, type?.name, fmt.period(doc.periodKey)].filter(Boolean).join(' · '),
       actions: actions(doc, current, permissions, reload),
     }),
 
@@ -297,7 +297,7 @@ function factsCard(doc, type, client, version) {
       kv('Client code', client?.client_code, { mono: true }),
       kv('Type', type?.name),
       kv('Category', type?.category ? fmt.label(type.category) : null),
-      kv('Period', fmt.label(doc.periodKey)),
+      kv('Period', fmt.period(doc.periodKey)),
       kv('Priority', fmt.label(doc.priority)),
       kv('Source', fmt.label(doc.source)),
       kv('Uploaded', fmt.dateTime(doc.createdAt)),

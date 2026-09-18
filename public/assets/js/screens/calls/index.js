@@ -144,7 +144,7 @@ export default async function callsScreen({ query }) {
 
 function providerName(settings) {
   return settings.providerCatalogue.find(p => p.key === settings.settings.provider)?.name
-    ?? fmt.label(settings.settings.provider);
+    ?? fmt.vendor(settings.settings.provider);
 }
 
 // ---------------------------------------------------------------------------

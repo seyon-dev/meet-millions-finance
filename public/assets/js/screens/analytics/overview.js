@@ -52,7 +52,7 @@ function build(data) {
     pageHead({
       title: 'Analytics',
       subtitle: series.length
-        ? `${fmt.label(series[0].periodKey)} to ${fmt.label(latest.periodKey)}`
+        ? `${fmt.period(series[0].periodKey)} to ${fmt.period(latest.periodKey)}`
         : null,
       actions: session.can('analytics.build')
         ? button('Build a report', { variant: 'primary', icon: 'terminal', href: '/analytics/builder' })
@@ -121,7 +121,7 @@ function build(data) {
                 rows: [...series]
                   .sort((a, b) => b.documents - a.documents)
                   .slice(0, 6)
-                  .map(s => ({ label: fmt.label(s.periodKey), value: s.documents })),
+                  .map(s => ({ label: fmt.period(s.periodKey), value: s.documents })),
                 emptyMessage: 'Nothing to rank yet.',
               }),
             })),
@@ -140,7 +140,7 @@ function build(data) {
                   el('th.mm-align-right', { text: 'Collected' }))),
                 el('tbody',
                   ...[...series].reverse().map(row => el('tr',
-                    el('td', { text: fmt.label(row.periodKey) }),
+                    el('td', { text: fmt.period(row.periodKey) }),
                     el('td.mm-align-right.mm-numeric', { text: fmt.number(row.documents) }),
                     el('td.mm-align-right.mm-numeric', { text: fmt.number(row.newClients) }),
                     el('td.mm-align-right.mm-numeric', { text: fmt.number(row.reports) }),

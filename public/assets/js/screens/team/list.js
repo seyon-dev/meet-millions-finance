@@ -39,8 +39,19 @@ export default async function teamScreen() {
       selectFilter({
         label: 'Role',
         options: (roleData.roles ?? []).map(r => ({ value: r.key, label: r.name })),
-        value: active.roleKey ?? '',
-        onChange: v => apply('roleKey', v),
+        // The API reads `role`; sending `roleKey` filtered nothing at all.
+        value: active.role ?? '',
+        onChange: v => apply('role', v),
+      }),
+      selectFilter({
+        label: 'People',
+        options: [
+          { value: 'staff', label: 'People: who works here' },
+          { value: 'all', label: 'People: including client logins' },
+        ],
+        value: active.staff === 'false' ? 'all' : 'staff',
+        allLabel: null,
+        onChange: v => apply('staff', v === 'all' ? 'false' : 'true'),
       }),
       selectFilter({
         label: 'Status',
@@ -57,6 +68,9 @@ export default async function teamScreen() {
           })
         : null,
     ].filter(Boolean),
+    // A firm's clients have logins here too, and counting them as team members
+    // makes a six-person practice look like eleven.
+    initialFilters: { staff: 'true' },
     load: async (params) => {
       const { data, meta } = await api.get('/users', params);
       paintTiles(meta.summary);

@@ -594,6 +594,7 @@ router.get('/payments', async (ctx) => {
   }
   where.eqIf('p.status', ctx.q('status'));
   where.eqIf('p.gateway', ctx.q('gateway'));
+  where.eqIf('p.method', ctx.q('method'));
   where.eqIf('p.client_id', ctx.q('clientId'));
   where.eqIf('p.invoice_id', ctx.q('invoiceId'));
   where.searchIf(['p.reference_no', 'p.gateway_payment_id', 'p.receipt_no'], ctx.q('q'));

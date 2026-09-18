@@ -70,7 +70,7 @@ export default async function approvalsScreen({ query }) {
         render: row => el('div.mm-stack',
           el('span.mm-fw-medium', { text: row.report?.title ?? `${fmt.label(row.entityType)} ${row.entityId.slice(-6)}` }),
           el('span.mm-muted.mm-text-xs', {
-            text: [row.report?.referenceNo, row.report?.clientName, fmt.label(row.report?.periodKey)]
+            text: [row.report?.referenceNo, row.report?.clientName, fmt.period(row.report?.periodKey)]
               .filter(Boolean).join(' · '),
           })),
       },
@@ -202,7 +202,7 @@ async function loadStats(tileHost, sideHost) {
         label: 'Collected this month',
         value: data.revenueMtdFormatted ?? fmt.money(data.revenueMtdPaise),
         icon: 'rupee',
-        caption: fmt.label(data.periodKey),
+        caption: fmt.period(data.periodKey),
       })));
 
     render(sideHost, el('div.mm-stack.mm-gap-4',

@@ -48,7 +48,7 @@ function build(approvals, branches, attendance) {
   return [
     pageHead({
       title: 'Team performance',
-      subtitle: approvals?.periodKey ? `${fmt.label(approvals.periodKey)}, measured from the work itself` : null,
+      subtitle: approvals?.periodKey ? `${fmt.period(approvals.periodKey)}, measured from the work itself` : null,
       actions: button('Back to the team', { variant: 'ghost', icon: 'users', href: '/team' }),
     }),
 

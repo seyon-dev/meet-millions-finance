@@ -38,7 +38,7 @@ export function periodHeader(period, { stages = null } = {}) {
   const due = fmt.untilDays(period.due_date);
 
   return card({
-    title: fmt.label(period.period_key),
+    title: fmt.period(period.period_key),
     subtitle: period.due_date ? `Due ${fmt.date(period.due_date)}` : 'No due date set',
     actions: frag(
       statusPill(period.status),

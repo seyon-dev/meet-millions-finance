@@ -612,9 +612,12 @@ router.get('/revenue', async (ctx) => {
     `SELECT COALESCE(SUM(monthly_price_paise),0) AS mrr FROM add_on_subscriptions
       WHERE status IN ('active','trialing')`);
 
+  // The CASE matters. A LEFT JOIN still yields one row for a plan nobody is
+  // on, so a plain SUM(p.monthly_price_paise) counted that plan's price once
+  // and reported "₹2,999 from 0 organisations" — revenue from nobody.
   const byPlan = await db.many(
     `SELECT p.key, p.name, COUNT(s.id) AS tenants,
-            COALESCE(SUM(p.monthly_price_paise),0) AS mrr
+            COALESCE(SUM(CASE WHEN s.id IS NOT NULL THEN p.monthly_price_paise ELSE 0 END), 0) AS mrr
        FROM plans p LEFT JOIN subscriptions s ON s.plan_id = p.id AND s.status IN ('active','trialing')
       GROUP BY p.id ORDER BY p.sort_order`);
 

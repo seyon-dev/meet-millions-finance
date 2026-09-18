@@ -52,8 +52,8 @@ export default async function documentsScreen({ query }) {
         ? selectFilter({
             label: 'Type',
             options: types.map(t => ({ value: t.id, label: t.name })),
-            value: active.documentTypeId ?? '',
-            onChange: v => apply('documentTypeId', v),
+            value: active.typeId ?? '',
+            onChange: v => apply('typeId', v),
           })
         : null,
       clients.length

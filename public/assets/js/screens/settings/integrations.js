@@ -32,6 +32,31 @@ const CATEGORY_ICONS = {
   payments: 'credit-card', telephony: 'phone',
 };
 
+/**
+ * Headings, written out.
+ *
+ * Title-casing a key gives "Sms", "Whatsapp", "Llm" and "Esign" — every one of
+ * which is a product name somebody would recognise spelled wrongly.
+ */
+const CATEGORY_LABELS = {
+  email: 'Email',
+  sms: 'SMS',
+  whatsapp: 'WhatsApp',
+  push: 'Push notifications',
+  ocr: 'OCR',
+  speech: 'Speech-to-text',
+  llm: 'AI',
+  storage: 'Cloud storage',
+  leads: 'Lead capture',
+  calendar: 'Calendar',
+  esign: 'e-Sign',
+  dns: 'Custom domains',
+  payments: 'Payments',
+  telephony: 'Telephony',
+};
+
+const categoryLabel = key => CATEGORY_LABELS[key] ?? fmt.label(key);
+
 export default async function integrationsScreen() {
   setBreadcrumbs([{ label: 'Settings', href: '/settings' }, { label: 'Integrations' }]);
 
@@ -91,7 +116,7 @@ function build(data, reload) {
     }),
 
     ...byCategory.map(([category, integrations]) => card({
-      title: fmt.label(category),
+      title: categoryLabel(category),
       subtitle: `${integrations.filter(i => i.configured).length} of ${integrations.length} ready`,
       flush: true,
       body: el('ul.mm-list',
@@ -149,7 +174,7 @@ function toneClass(integration) {
 async function openIntegration(integration, reload) {
   const result = await modal({
     title: integration.name,
-    description: `${fmt.label(integration.category)}${integration.addOn ? ` · part of the ${fmt.label(integration.addOn)} add-on` : ''}`,
+    description: `${categoryLabel(integration.category)}${integration.addOn ? ` · part of the ${fmt.label(integration.addOn)} add-on` : ''}`,
     size: 'lg',
     body: ({ close }) => frag(
       integration.selfHosted
@@ -175,7 +200,7 @@ async function openIntegration(integration, reload) {
 
       el('div.mm-kvgrid',
         kv('Status', fmt.label(integration.status)),
-        kv('Category', integration.label ?? fmt.label(integration.category)),
+        kv('Category', integration.label ?? categoryLabel(integration.category)),
         kv('Account', integration.account),
         kv('Last tested', integration.lastTestAt ? fmt.dateTime(integration.lastTestAt) : 'Never'),
         kv('Last sync', integration.lastSyncAt ? fmt.dateTime(integration.lastSyncAt) : 'Never')),

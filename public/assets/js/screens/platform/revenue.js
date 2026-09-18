@@ -129,7 +129,7 @@ function build(data) {
                 el('th.mm-align-right', { text: 'Collected' }))),
               el('tbody',
                 ...[...collections].reverse().map(row => el('tr',
-                  el('td', { text: fmt.label(row.periodKey) }),
+                  el('td', { text: fmt.period(row.periodKey) }),
                   el('td.mm-align-right.mm-numeric', { text: fmt.number(row.payments) }),
                   el('td.mm-align-right.mm-numeric', { text: fmt.money(row.collectedPaise) }))))))
         : emptyState({ title: 'Nothing collected yet', icon: 'rupee', inline: true }),

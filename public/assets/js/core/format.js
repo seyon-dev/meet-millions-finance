@@ -139,8 +139,102 @@ export function label(value) {
   const words = String(value).replace(/[_-]+/g, ' ').trim();
   const cased = words.charAt(0).toUpperCase() + words.slice(1);
   // Acronyms an Indian accountant reads in capitals.
-  return cased.replace(/\b(gst|tds|pan|tan|itc|hsn|sac|cgst|sgst|igst|kyc|api|ocr|ai|sla|ivr|dsc|upi|emi|mrr|cin)\b/gi,
+  return cased.replace(/\b(gst|tds|pan|tan|itc|hsn|sac|cgst|sgst|igst|kyc|api|ocr|ai|sla|ivr|dsc|upi|emi|mrr|cin|sms|dns|llm|crm|pdf|csv)\b/gi,
     m => m.toUpperCase());
+}
+
+/**
+ * A filing period, written the way somebody says it.
+ *
+ * Period keys come in three shapes — 2026-09, 2026-Q1 and 2026-27 — and
+ * `label()` turns all three into something wrong: "2026 09" is not a month.
+ */
+export function period(key) {
+  const value = String(key ?? '').trim();
+  if (!value) return '—';
+
+  const month = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(value);
+  if (month) {
+    const names = ['January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'];
+    return `${names[Number(month[2]) - 1]} ${month[1]}`;
+  }
+
+  const quarter = /^(\d{4})-Q([1-4])$/i.exec(value);
+  if (quarter) return `Q${quarter[2]} ${quarter[1]}`;
+
+  // An Indian financial year, April to March.
+  const year = /^(\d{4})-(\d{2})$/.exec(value);
+  if (year) return `FY ${year[1]}–${year[2]}`;
+
+  return value;
+}
+
+/**
+ * Vendor names, spelled the way the vendor spells them.
+ *
+ * Title-casing a key gives "Myoperator", "Ringcentral" and "Whatsapp", which
+ * looks careless next to the vendor's own branding.
+ */
+const VENDOR_NAMES = {
+  exotel: 'Exotel', twilio: 'Twilio', plivo: 'Plivo', knowlarity: 'Knowlarity',
+  myoperator: 'MyOperator', ringcentral: 'RingCentral', aircall: 'Aircall',
+  razorpay: 'Razorpay', stripe: 'Stripe', cashfree: 'Cashfree', phonepe: 'PhonePe',
+  digio: 'Digio', leegality: 'Leegality',
+  whatsapp: 'WhatsApp', whatsapp_cloud: 'WhatsApp Cloud API',
+  ses: 'Amazon SES', msg91: 'MSG91', fcm: 'Firebase Cloud Messaging',
+  anthropic: 'Claude API', google_vision: 'Google Cloud Vision',
+  google_speech: 'Google Cloud Speech-to-Text', google_drive: 'Google Drive',
+  google_sheets: 'Google Sheets', google_forms: 'Google Forms',
+  google_calendar: 'Google Calendar', outlook_calendar: 'Outlook Calendar',
+  onedrive: 'OneDrive / SharePoint', dropbox: 'Dropbox',
+  meta_leads: 'Meta Lead Ads', website_form: 'Website Contact Form',
+  cloudflare_dns: 'Cloudflare DNS',
+};
+
+export function vendor(key) {
+  return VENDOR_NAMES[String(key ?? '').toLowerCase()] ?? label(key);
+}
+
+/**
+ * An audit action, as a sentence.
+ *
+ * Action keys are `area.verb` — `auth.login`, `documents.uploaded`. Passing one
+ * through `label()` gives "Auth.login", which is the key with a capital letter
+ * rather than a description of what happened.
+ */
+const ACTION_VERBS = {
+  login: 'Signed in',
+  login_failed: 'Sign-in failed',
+  logout: 'Signed out',
+  '2fa_enabled': 'Enabled two-factor',
+  '2fa_disabled': 'Disabled two-factor',
+  password_changed: 'Changed password',
+  password_reset: 'Reset password',
+  session_revoked: 'Revoked a session',
+  role_changed: 'Changed a role',
+  permission_changed: 'Changed permissions',
+  query_raised: 'Raised a query',
+  changes_requested: 'Requested changes',
+  signed_off: 'Signed off',
+  plan_changed: 'Changed plan',
+  invoice_created: 'Raised an invoice',
+  invoice_voided: 'Voided an invoice',
+  rule_changed: 'Changed a tax rule',
+  record_edited: 'Edited a record',
+};
+
+export function action(key) {
+  const value = String(key ?? '').trim();
+  if (!value) return '—';
+
+  // The area is a column of its own wherever this is used, so the sentence is
+  // just what was done.
+  const [, ...rest] = value.split('.');
+  const verb = rest.join('.');
+  if (!verb) return label(value);
+
+  return ACTION_VERBS[verb] ?? label(verb);
 }
 
 export function initials(name) {

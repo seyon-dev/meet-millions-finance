@@ -171,7 +171,7 @@ function filingPeriodsCard(periods) {
         el('div.mm-list__main',
           el('span.mm-fw-medium', { text: period.clientName ?? period.label }),
           el('span.mm-muted.mm-text-xs', {
-            text: `${fmt.label(period.label)} · ${period.verified}/${period.expected} verified`,
+            text: `${fmt.period(period.label)} · ${period.verified}/${period.expected} verified`,
           })),
         el('span.mm-progress.mm-progress--sm', { style: { width: '96px' } },
           el('span.mm-progress__bar', {

@@ -83,7 +83,7 @@ export default async function auditScreen({ query }) {
           el('span.mm-list__icon', { class: severityTone(row.severity) },
             icon(severityIcon(row), { size: 'sm' })),
           el('div.mm-stack',
-            el('span.mm-fw-medium', { text: fmt.label(row.action) }),
+            el('span.mm-fw-medium', { text: fmt.action(row.action) }),
             el('span.mm-muted.mm-text-xs', {
               text: [row.entity?.type ? fmt.label(row.entity.type) : null, row.entity?.label]
                 .filter(Boolean).join(' · '),
@@ -231,7 +231,7 @@ async function openEntry(entry) {
   }
 
   await modal({
-    title: fmt.label(full.action),
+    title: fmt.action(full.action),
     description: [full.entity?.type ? fmt.label(full.entity.type) : null, full.entity?.label]
       .filter(Boolean).join(' · ') || null,
     size: 'lg',

@@ -81,7 +81,7 @@ export default async function taxScreen({ query }) {
         render: row => el('div.mm-stack',
           el('span.mm-fw-medium', { text: row.clientName ?? '—' }),
           el('span.mm-muted.mm-text-xs', {
-            text: [row.clientCode, fmt.label(row.periodKey)].filter(Boolean).join(' · '),
+            text: [row.clientCode, fmt.period(row.periodKey)].filter(Boolean).join(' · '),
           })),
       },
       {
@@ -194,7 +194,7 @@ async function loadSummary(host, regime) {
       stat({
         label: 'Taxable value',
         value: fmt.moneyShort(block.taxableValuePaise ?? 0),
-        caption: `${fmt.label(data.periodKey)} · ${fmt.plural(block.computations ?? 0, 'computation')}`,
+        caption: `${fmt.period(data.periodKey)} · ${fmt.plural(block.computations ?? 0, 'computation')}`,
         icon: 'rupee',
       }),
       regime === 'gst'
@@ -259,7 +259,7 @@ async function runComputation(clients, refresh) {
           const { data } = await api.get(`/clients/${clientSelect.value}/periods`);
           render(periodSelect, ...(data ?? []).map(p => el('option', {
             value: p.id,
-            text: `${fmt.label(p.period_key)} — ${fmt.label(p.status)}`,
+            text: `${fmt.period(p.period_key)} — ${fmt.label(p.status)}`,
           })));
           periodSelect.disabled = !(data ?? []).length;
           if (!(data ?? []).length) {

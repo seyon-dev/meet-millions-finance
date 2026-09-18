@@ -180,7 +180,7 @@ function paymentsCard(payments) {
               el('span.mm-muted.mm-text-xs', {
                 text: [
                   fmt.label(payment.method),
-                  payment.gateway !== 'offline' ? fmt.label(payment.gateway) : null,
+                  payment.gateway !== 'offline' ? fmt.vendor(payment.gateway) : null,
                   payment.receiptNo,
                   fmt.dateTime(payment.paidAt ?? payment.createdAt),
                 ].filter(Boolean).join(' · '),

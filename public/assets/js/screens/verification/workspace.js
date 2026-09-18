@@ -74,7 +74,7 @@ function build(data, { reload, openedAt }) {
   return [
     pageHead({
       title: doc.title,
-      subtitle: [client?.display_name, type?.name, fmt.label(doc.periodKey)].filter(Boolean).join(' · '),
+      subtitle: [client?.display_name, type?.name, fmt.period(doc.periodKey)].filter(Boolean).join(' · '),
       actions: frag(
         navigator_(navigation),
         button('Open full record', { variant: 'ghost', icon: 'external', href: `/documents/${doc.id}` })),
@@ -192,7 +192,7 @@ function factsCard(doc, client, type, version) {
       kv('Client', client?.display_name),
       kv('GSTIN', client?.gstin, { mono: true }),
       kv('Type', type?.name),
-      kv('Period', fmt.label(doc.periodKey)),
+      kv('Period', fmt.period(doc.periodKey)),
       kv('Uploaded', fmt.dateTime(doc.createdAt)),
       kv('Source', fmt.label(doc.source)),
       kv('SLA due', doc.slaDueAt ? fmt.dateTime(doc.slaDueAt) : null),

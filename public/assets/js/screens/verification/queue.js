@@ -93,7 +93,7 @@ export default async function verificationQueueScreen({ query }) {
           el('div.mm-stack',
             el('span.mm-fw-medium', { text: row.title }),
             el('span.mm-muted.mm-text-xs', {
-              text: [row.typeName, fmt.label(row.periodKey)].filter(Boolean).join(' · '),
+              text: [row.typeName, fmt.period(row.periodKey)].filter(Boolean).join(' · '),
             }))),
       },
       {

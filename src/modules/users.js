@@ -44,6 +44,13 @@ router.get('/', async (ctx) => {
                         WHERE ur.user_id = u.id AND r.key = ?)`, roleKey);
   }
 
+  // A firm's clients have accounts here too, and a headcount that counts them
+  // is not a headcount. `?staff=true` asks for the people who work here.
+  if (ctx.qBool('staff')) {
+    where.add(`NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+                            WHERE ur.user_id = u.id AND r.key = 'client')`);
+  }
+
   const { rows, total } = await scope.paginate('users', where, {
     columns: `u.id, u.email, u.full_name, u.phone, u.job_title, u.status, u.branch_id,
               u.twofa_enabled, u.last_login_at, u.created_at, u.avatar_key, u.is_demo,
@@ -56,13 +63,20 @@ router.get('/', async (ctx) => {
   });
 
   const roles = await rolesForUsers(scope, rows.map(r => r.id));
+
+  // The tiles have to count the same people the list shows, or the headline
+  // disagrees with the rows beneath it.
+  const staffOnly = ctx.qBool('staff')
+    ? `AND NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+                        WHERE ur.user_id = users.id AND r.key = 'client')`
+    : '';
   const counts = await scope.rawOne(
     `SELECT COUNT(*) AS total,
             SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
             SUM(CASE WHEN status = 'invited' THEN 1 ELSE 0 END) AS invited,
             SUM(CASE WHEN status IN ('suspended','locked','deactivated') THEN 1 ELSE 0 END) AS inactive,
             SUM(CASE WHEN twofa_enabled = 1 THEN 1 ELSE 0 END) AS with_2fa
-       FROM users WHERE tenant_id = ? AND deleted_at IS NULL`, [ctx.tenantId]);
+       FROM users WHERE tenant_id = ? AND deleted_at IS NULL ${staffOnly}`, [ctx.tenantId]);
 
   return paginated(rows.map(u => shapeUser(u, roles.get(u.id) ?? [])), {
     page, pageSize, total,

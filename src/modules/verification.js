@@ -15,7 +15,7 @@ import { Db, safeOrder } from '../db/client.js';
 import { scopeFor } from '../db/tenancy.js';
 import { validate } from '../utils/validate.js';
 import { ID, formatReference } from '../utils/id.js';
-import { nowIso, secondsBetween, dayKey } from '../utils/time.js';
+import { nowIso, secondsBetween, dayKey, addDays } from '../utils/time.js';
 import { audit, recordActivity } from '../services/audit.js';
 import { hasFeature } from '../services/features.js';
 import {
@@ -64,7 +64,14 @@ router.get('/queue', async (ctx) => {
   where.eqIf('d.period_key', ctx.q('periodKey'));
   where.searchIf(['d.title', 'c.display_name', 'c.client_code'], ctx.q('q'));
   where.betweenIf('d.created_at', ctx.q('from'), ctx.q('to'));
-  if (ctx.qBool('slaBreached')) where.add("d.sla_due_at < ?", nowIso());
+  // `sla` is one choice, not two booleans: a document is past its SLA, or due
+  // today, or neither.
+  const sla = ctx.q('sla');
+  if (sla === 'breached' || ctx.qBool('slaBreached')) {
+    where.add('d.sla_due_at < ?', nowIso());
+  } else if (sla === 'today') {
+    where.add('d.sla_due_at >= ? AND d.sla_due_at < ?', nowIso(), `${dayKey(addDays(1))}T00:00:00.000Z`);
+  }
   if (ctx.qBool('flagged')) where.add("d.ai_precheck_status = 'flagged'");
 
   const sortable = ['created_at', 'sla_due_at', 'priority', 'title', 'status'];

@@ -110,7 +110,7 @@ function currentPeriodCard(period) {
   const due = fmt.untilDays(period.dueDate);
 
   return card({
-    title: `${fmt.label(period.label)} — ${fmt.label(period.status)}`,
+    title: `${fmt.period(period.label)} — ${fmt.label(period.status)}`,
     subtitle: period.dueDate
       ? `Due ${fmt.date(period.dueDate)}${due ? ` · ${due.label}` : ''}`
       : null,
@@ -161,7 +161,7 @@ function checklistCard(items) {
             el('div.mm-list__main',
               el('span.mm-fw-medium', { text: item.label }),
               el('span.mm-muted.mm-text-xs', {
-                text: [fmt.label(item.period), item.required ? 'Required' : 'Optional']
+                text: [fmt.period(item.period), item.required ? 'Required' : 'Optional']
                   .filter(Boolean).join(' · '),
               })),
             statusPill(item.status),
@@ -211,7 +211,7 @@ function periodsCard(periods) {
     body: el('ul.mm-list',
       ...periods.map(period => el('li.mm-list__row',
         el('a.mm-list__main', { href: `/client/filings?period=${encodeURIComponent(period.label)}` },
-          el('span.mm-fw-medium', { text: fmt.label(period.label) }),
+          el('span.mm-fw-medium', { text: fmt.period(period.label) }),
           period.dueDate
             ? el('span.mm-muted.mm-text-xs', { text: `Due ${fmt.date(period.dueDate)}` })
             : null),

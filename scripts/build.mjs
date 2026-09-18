@@ -174,7 +174,38 @@ const routes = [...app.matchAll(/\broute\('([^']+)',\s*\(\)\s*=>\s*import\('([^'
   }
 }
 
-// ---- 8. Every icon name used exists ---------------------------------------
+// ---- 8. Every filter a screen applies is read by an endpoint ---------------
+{
+  const read = new Set();
+  for (const file of walk('src/modules', ['.js'])) {
+    const text = readFileSync(file, 'utf8');
+    for (const re of [/ctx\.q\('([a-zA-Z0-9_]+)'/g, /ctx\.qBool\('([a-zA-Z0-9_]+)'/g,
+      /ctx\.qInt\('([a-zA-Z0-9_]+)'/g, /ctx\.qList\('([a-zA-Z0-9_]+)'/g]) {
+      for (const m of text.matchAll(re)) read.add(m[1]);
+    }
+  }
+  // Paging and sorting go through ctx.pagination() and safeOrder(), not ctx.q.
+  for (const name of ['page', 'pageSize', 'sort', 'dir', 'q']) read.add(name);
+
+  let checked = 0;
+  for (const file of walk('public/assets/js/screens', ['.js'])) {
+    const text = readFileSync(file, 'utf8');
+    text.split('\n').forEach((line, i) => {
+      for (const m of line.matchAll(/apply\('([a-zA-Z0-9_]+)'/g)) {
+        checked += 1;
+        if (!read.has(m[1])) {
+          // A query parameter nothing reads is ignored rather than rejected,
+          // so the dropdown moves and the list does not. Nothing else reports
+          // it.
+          note('filters', `${file}:${i + 1} apply('${m[1]}') — no endpoint reads that name`);
+        }
+      }
+    });
+  }
+  say(`  filters      ${checked} against ${read.size} query names`);
+}
+
+// ---- 9. Every icon name used exists ---------------------------------------
 {
   const iconsSource = readFileSync('public/assets/js/core/icons.js', 'utf8');
   const known = new Set([

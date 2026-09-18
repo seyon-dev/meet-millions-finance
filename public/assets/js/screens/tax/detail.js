@@ -27,7 +27,7 @@ export default async function taxDetailScreen({ params }) {
       const { data } = await api.get(`/tax/computations/${params.id}`);
       setBreadcrumbs([
         { label: 'Tax', href: `/tax?regime=${data.computation.regime}` },
-        { label: `${data.client?.display_name ?? ''} ${fmt.label(data.computation.periodKey)}`.trim() },
+        { label: `${data.client?.display_name ?? ''} ${fmt.period(data.computation.periodKey)}`.trim() },
       ]);
       render(page, ...build(data, load));
     } catch (err) {
@@ -45,7 +45,7 @@ function build(data, reload) {
 
   return [
     pageHead({
-      title: `${gst ? 'GST' : 'TDS'} — ${fmt.label(c.periodKey)}`,
+      title: `${gst ? 'GST' : 'TDS'} — ${fmt.period(c.periodKey)}`,
       subtitle: [client?.display_name, company?.gstin, `computed ${fmt.dateTime(c.computedAt)}`]
         .filter(Boolean).join(' · '),
       actions: frag(
@@ -301,7 +301,7 @@ function contextCard(c, client, company, period) {
       kv('Client', client?.display_name),
       kv('GSTIN', company?.gstin, { mono: true }),
       kv('State', company?.state_code, { mono: true }),
-      kv('Period', fmt.label(c.periodKey)),
+      kv('Period', fmt.period(c.periodKey)),
       kv('Period type', fmt.label(c.periodType)),
       kv('Filing status', period?.status ? fmt.label(period.status) : null),
       kv('Documents used', c.sourceDocumentCount),

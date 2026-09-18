@@ -44,7 +44,7 @@ function build(data, reload) {
   return [
     pageHead({
       title: report.title,
-      subtitle: [report.referenceNo, client?.display_name, fmt.label(report.periodKey)]
+      subtitle: [report.referenceNo, client?.display_name, fmt.period(report.periodKey)]
         .filter(Boolean).join(' · '),
       actions: frag(
         statusPill(report.status),
@@ -221,7 +221,7 @@ function aboutCard(report, meta, client, company) {
       kv('Type', fmt.label(report.type)),
       kv('Client', client?.display_name ?? 'Firm-wide'),
       kv('GSTIN', company?.gstin ?? meta?.gstin, { mono: true }),
-      kv('Period', fmt.label(report.periodKey)),
+      kv('Period', fmt.period(report.periodKey)),
       kv('Covers', report.periodStart ? `${fmt.date(report.periodStart)} – ${fmt.date(report.periodEnd)}` : null),
       kv('Produced by', report.generatedByName),
       kv('Produced', fmt.dateTime(report.generatedAt)),

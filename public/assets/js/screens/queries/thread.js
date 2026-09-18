@@ -238,7 +238,7 @@ function aboutCard(query, client, doc, period) {
       kv('Raised', fmt.dateTime(query.createdAt)),
       kv('First response', query.firstResponseAt ? fmt.dateTime(query.firstResponseAt) : 'Not yet'),
       kv('Due', query.dueAt ? fmt.dateTime(query.dueAt) : null),
-      kv('Period', period?.period_key ? fmt.label(period.period_key) : null),
+      kv('Period', period?.period_key ? fmt.period(period.period_key) : null),
       kv('Resolved', query.resolvedAt ? fmt.dateTime(query.resolvedAt) : null)),
   });
 }
@@ -253,7 +253,7 @@ function documentCard(doc) {
         el('a.mm-list__main', { href: `/documents/${doc.id}` },
           el('span.mm-fw-medium', { text: doc.title }),
           el('span.mm-muted.mm-text-xs', {
-            text: [fmt.label(doc.period_key), `v${doc.version_count}`].filter(Boolean).join(' · '),
+            text: [fmt.period(doc.period_key), `v${doc.version_count}`].filter(Boolean).join(' · '),
           })),
         statusPill(doc.status))),
   });

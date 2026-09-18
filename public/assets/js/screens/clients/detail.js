@@ -157,7 +157,7 @@ function periodsPane(client, periods, query) {
           paintDetail();
         },
       },
-        el('span', { text: fmt.label(period.period_key) }),
+        el('span', { text: fmt.period(period.period_key) }),
         el('span.mm-tab__dot', { class: `mm-tab__dot--${toneFor(period.status)}` })))));
   }
 
@@ -451,7 +451,7 @@ async function openPeriod(client) {
 
   try {
     await api.post(`/clients/${client.id}/periods`, { periodKey, periodType: 'monthly' });
-    notify.success(`${fmt.label(periodKey)} opened.`);
+    notify.success(`${fmt.period(periodKey)} opened.`);
     router.go(`/clients/${client.id}?period=${periodKey}`);
     window.location.reload();
   } catch (err) {

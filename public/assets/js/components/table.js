@@ -365,6 +365,11 @@ function pageNumbers(current, total) {
 }
 
 /** A <select> filter for a table toolbar. */
+/**
+ * `allLabel: null` drops the empty option, for a filter where one of the
+ * choices is always in force — "who works here" or "everyone", say, with no
+ * third meaning for "unset".
+ */
 export function selectFilter({ label, options, value = '', onChange, allLabel = 'All' }) {
   return el('label.mm-filter',
     el('span.mm-sr-only', { text: label }),
@@ -373,7 +378,7 @@ export function selectFilter({ label, options, value = '', onChange, allLabel = 
       value,
       onChange: (e) => onChange(e.target.value || null),
     },
-      el('option', { value: '', text: `${label}: ${allLabel}` }),
+      allLabel === null ? null : el('option', { value: '', text: `${label}: ${allLabel}` }),
       ...options.map(option => el('option', {
         value: option.value ?? option,
         selected: (option.value ?? option) === value,

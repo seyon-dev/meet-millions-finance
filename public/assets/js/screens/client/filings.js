@@ -89,7 +89,7 @@ export default async function clientFilingsScreen({ query }) {
           paintDetail();
         },
       },
-        el('span.mm-monthlist__key', { text: fmt.label(period.period_key) }),
+        el('span.mm-monthlist__key', { text: fmt.period(period.period_key) }),
         statusPill(period.status))))); 
   }
 

@@ -279,7 +279,7 @@ function detailsCard(call, agent, client) {
       kv('Virtual number', call.virtualNumber, { mono: true }),
       kv('Agent', agent?.full_name),
       kv('Client', client?.display_name),
-      kv('Provider', fmt.label(call.provider)),
+      kv('Provider', fmt.vendor(call.provider)),
       kv('Started', fmt.dateTime(call.startedAt)),
       kv('Answered', call.answeredAt ? fmt.dateTime(call.answeredAt) : 'Not answered'),
       kv('Ended', call.endedAt ? fmt.dateTime(call.endedAt) : null),

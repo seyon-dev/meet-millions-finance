@@ -119,7 +119,7 @@ function insightCard(insight, reload) {
     title: insight.title,
     subtitle: [
       fmt.label(insight.kind),
-      insight.periodKey ? fmt.label(insight.periodKey) : null,
+      insight.periodKey ? fmt.period(insight.periodKey) : null,
       fmt.relative(insight.createdAt),
     ].filter(Boolean).join(' · '),
     actions: frag(
