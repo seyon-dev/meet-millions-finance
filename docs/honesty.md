@@ -9,8 +9,8 @@ checkable rather than asserted.
 
 | Claim | How it is held |
 | --- | --- |
-| Every screen reads the real API | No screen contains fixture data. The build check fails on a route whose screen file is missing, and `npm run ui-check` walks all 47 screens in a real browser and reports console errors and failed requests. |
-| Every API route reads and writes D1 | 101 tests run the real Worker against real migrations on a `node:sqlite` D1 stand-in. |
+| Every screen reads the real API | No screen contains fixture data. The build check fails on a route whose screen file is missing, and `npm run ui-check` walks 55 of the 73 registered routes in a real browser, at four widths, as three different people — an admin, a platform Super Admin and a client — reporting console errors, failed requests, horizontal overflow and stuck skeletons. The 18 it does not walk are the ten that need a record id (`/clients/:id`), the six sign-in and password screens, and two role dashboards that need a session of their own. |
+| Every API route reads and writes D1 | 114 tests run the real Worker against real migrations on a `node:sqlite` D1 stand-in. |
 | No dead navigation | The build check resolves every internal link against the routes the SPA registers. It fails on a path nothing serves. |
 | No fake permission checks | The build check fails on any permission key not in the catalogue. |
 | No fake vendor success | Every provider returns `not_configured` with its missing keys named. Tests assert that the calling endpoints surface that, rather than fabricating a result. |
@@ -79,7 +79,7 @@ do nothing on a deployment with no keys, which they report rather than fake:
 
 ```bash
 npm run build     # links, routes, permissions, CSS variables, icons, migrations
-npm test          # 101 tests against the real Worker
+npm test          # 114 tests against the real Worker
 npm run dev       # then npm run ui-check in another shell
 ```
 

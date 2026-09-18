@@ -33,6 +33,9 @@ const CREDENTIALS = { email: 'asha@meridiantax.example', password: 'Demo-Passw0r
 // The platform screens sit above every organisation, so the tenant owner
 // cannot reach them — and should not be able to. They need their own session.
 const PLATFORM_CREDENTIALS = { email: 'devika@meetmillions.example', password: 'Demo-Passw0rd!24' };
+// The client portal is a different set of screens for a different person, and
+// an admin session cannot see it. Walking it needs a client's own sign-in.
+const CLIENT_CREDENTIALS = { email: 'priya@radianttraders.example', password: 'Demo-Passw0rd!24' };
 
 const VIEWPORTS = [
   { name: 'phone', width: 390, height: 844 },
@@ -90,10 +93,19 @@ const ROUTES = [
   { path: '/platform/plans', expect: 'h1', as: 'platform' },
   { path: '/platform/revenue', expect: 'h1', as: 'platform' },
   { path: '/platform/logs', expect: 'h1', as: 'platform' },
+  { path: '/settings/users', expect: 'h1' },
+  { path: '/client/dashboard', expect: 'h1', as: 'client' },
+  { path: '/client/upload', expect: 'h1', as: 'client' },
+  { path: '/client/filings', expect: 'h1', as: 'client' },
+  { path: '/client/queries', expect: 'h1', as: 'client' },
+  { path: '/client/reports', expect: 'h1', as: 'client' },
+  { path: '/client/invoices', expect: 'h1', as: 'client' },
+  { path: '/client/payments', expect: 'h1', as: 'client' },
 ];
 
 let sessionToken = null;
 let platformToken = null;
+let clientToken = null;
 
 /**
  * The application limits a signed-in user to 300 requests a minute, and a full
@@ -208,18 +220,26 @@ try {
       // The second sign-in goes through the API rather than the form: four
       // form sign-ins per run would trip the login rate limit, which is the
       // rate limit working rather than a fault to design around.
-      platformToken = await page.evaluate(async (creds) => {
+      const signInThroughApi = (creds) => page.evaluate(async (c) => {
         const response = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(creds),
+          body: JSON.stringify(c),
         });
         const envelope = await response.json().catch(() => null);
         return envelope?.data?.token ?? null;
-      }, PLATFORM_CREDENTIALS);
+      }, creds);
+
+      platformToken = await signInThroughApi(PLATFORM_CREDENTIALS);
       if (!platformToken) {
         record('/login', viewport.name, 'blocked',
           'No platform session — the demo Super Admin did not sign in, so /platform/* was not walked.');
+      }
+
+      clientToken = await signInThroughApi(CLIENT_CREDENTIALS);
+      if (!clientToken) {
+        record('/login', viewport.name, 'blocked',
+          'No client session — the demo client did not sign in, so /client/* was not walked.');
       }
     } else {
       await page.goto(`${base}/login`, { waitUntil: 'domcontentloaded' });
@@ -247,7 +267,9 @@ try {
       if (onlyList.length && !onlyList.includes(route.path)) continue;
       currentRoute = route.path;
 
-      const wanted = route.as === 'platform' ? platformToken : sessionToken;
+      const wanted = route.as === 'platform' ? platformToken
+        : route.as === 'client' ? clientToken
+        : sessionToken;
       if (!wanted) continue;
       if (wanted !== activeToken) {
         await page.evaluate(token => localStorage.setItem('mm.token', token), wanted);
