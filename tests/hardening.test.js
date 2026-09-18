@@ -472,6 +472,67 @@ describe('Hardening', () => {
     assert.deepEqual(res.data.calls, []);
   });
 
+  // -- Deployment preflight -------------------------------------------------
+
+  test('the preflight refuses a placeholder resource id and passes a real one', async () => {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const { readFile, writeFile } = await import('node:fs/promises');
+    const run = promisify(execFile);
+
+    const original = await readFile('wrangler.jsonc', 'utf8');
+    const attempt = async (databaseId) => {
+      await writeFile('wrangler.jsonc',
+        original.replace('"REPLACE_WITH_D1_DATABASE_ID"', JSON.stringify(databaseId)));
+      try {
+        await run(process.execPath, ['scripts/preflight-deploy.mjs']);
+        return 0;
+      } catch (err) {
+        return err.code ?? 1;
+      }
+    };
+
+    try {
+      // The exact value that reached the Cloudflare API and came back as
+      // "binding DB of type d1 must have a valid database_id" [code: 10021].
+      assert.equal(await attempt('00000000-0000-0000-0000-000000000000'), 1,
+        'an all-zero id must never reach a deploy');
+      assert.equal(await attempt('REPLACE_WITH_D1_DATABASE_ID'), 1);
+      assert.equal(await attempt('8f2a1c9e-4b7d-4e3a-9c15-6d0f2b8a7e41'), 0,
+        'a real id must not be mistaken for a placeholder');
+    } finally {
+      await writeFile('wrangler.jsonc', original);
+    }
+  });
+
+  test('the build enforces the preflight when the pipeline also deploys', async () => {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const run = promisify(execFile);
+
+    // Cloudflare Workers Builds defaults its deploy command to
+    // `npx wrangler deploy`, which never runs `npm run deploy`. The build has
+    // to catch a placeholder by itself or nothing does.
+    let failed = false;
+    let output = '';
+    try {
+      await run(process.execPath, ['scripts/build.mjs', '--quiet'],
+        { env: { ...process.env, WORKERS_CI: '1' } });
+    } catch (err) {
+      failed = true;
+      output = `${err.stdout ?? ''}${err.stderr ?? ''}`;
+    }
+
+    assert.ok(failed, 'a placeholder database_id must fail a build that will deploy');
+    assert.match(output, /database_id/);
+    assert.match(output, /wrangler d1 create/, 'and must name the command that fixes it');
+
+    // The same build must still pass for somebody who has just cloned the
+    // repository and is not deploying anything.
+    await run(process.execPath, ['scripts/build.mjs', '--quiet'],
+      { env: { ...process.env, WORKERS_CI: undefined, DEPLOY_PREFLIGHT: '0' } });
+  });
+
   // -- Content-Security-Policy ---------------------------------------------
 
   test('the document policy allows the inline theme script by hash, not by unsafe-inline', async () => {

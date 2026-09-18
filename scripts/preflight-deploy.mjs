@@ -176,26 +176,53 @@ if (migrationsDir && !existsSync(migrationsDir)) {
 // Report
 // ---------------------------------------------------------------------------
 
-if (problems.length) {
-  console.error(`\n  Deployment stopped — ${problems.length} thing(s) must be resolved first.\n`);
-  problems.forEach((p, i) => {
-    console.error(`  ${i + 1}. ${p.what}`);
-    console.error(`     → ${p.fix}\n`);
-  });
-  console.error('  Nothing was deployed. No Cloudflare resource was created or changed.\n');
-  process.exit(1);
+/**
+ * The problems, for a caller that wants to fold them into its own output.
+ *
+ * scripts/build.mjs imports this so the check still runs when the deploy
+ * command is `npx wrangler deploy` rather than `npm run deploy` — which is
+ * how Cloudflare Workers Builds is configured by default, and how a
+ * placeholder `database_id` reached the Cloudflare API and came back as
+ * `binding DB of type d1 must have a valid database_id specified [code: 10021]`.
+ */
+export function preflightProblems() {
+  return problems.map(p => `${p.what}\n     → ${p.fix}`);
 }
 
-console.log('\n  Preflight passed.\n');
-console.log(`  Worker:  ${config.name}`);
-console.log(`  D1:      ${d1.map(d => `${d.database_name} (${String(d.database_id).slice(0, 8)}…)`).join(', ') || 'none'}`);
-console.log(`  R2:      ${r2.map(b => b.bucket_name).join(', ') || 'none'}`);
-console.log(`  KV:      ${kv.map(n => n.binding).join(', ') || 'none (D1 fallback)'}`);
-console.log(`  Cron:    ${(config.triggers?.crons ?? []).length} trigger(s)`);
-console.log(`  URL:     ${appUrl}\n`);
+/** True when running inside Cloudflare Workers Builds, which deploys after it builds. */
+export function isDeployingCi() {
+  if (process.env.DEPLOY_PREFLIGHT === '0') return false;
+  if (process.env.DEPLOY_PREFLIGHT === '1') return true;
+  // Workers Builds sets WORKERS_CI plus a family of WORKERS_CI_* variables.
+  // Matching the prefix rather than one exact name means a rename upstream
+  // does not silently switch this check off.
+  return Object.keys(process.env).some(k => k === 'WORKERS_CI' || k.startsWith('WORKERS_CI_'));
+}
 
-for (const note of notes) console.log(`  Note: ${note}`);
-if (notes.length) console.log('');
+const runDirectly = process.argv[1] && process.argv[1].endsWith('preflight-deploy.mjs');
 
-console.log(`  Secrets must already be set with \`wrangler secret put\`: ${REQUIRED_SECRETS.join(', ')}.`);
-console.log('  Preflight cannot read them — Cloudflare does not expose secret values.\n');
+if (runDirectly) {
+  if (problems.length) {
+    console.error(`\n  Deployment stopped — ${problems.length} thing(s) must be resolved first.\n`);
+    problems.forEach((p, i) => {
+      console.error(`  ${i + 1}. ${p.what}`);
+      console.error(`     → ${p.fix}\n`);
+    });
+    console.error('  Nothing was deployed. No Cloudflare resource was created or changed.\n');
+    process.exit(1);
+  }
+
+  console.log('\n  Preflight passed.\n');
+  console.log(`  Worker:  ${config.name}`);
+  console.log(`  D1:      ${d1.map(d => `${d.database_name} (${String(d.database_id).slice(0, 8)}…)`).join(', ') || 'none'}`);
+  console.log(`  R2:      ${r2.map(b => b.bucket_name).join(', ') || 'none'}`);
+  console.log(`  KV:      ${kv.map(n => n.binding).join(', ') || 'none (D1 fallback)'}`);
+  console.log(`  Cron:    ${(config.triggers?.crons ?? []).length} trigger(s)`);
+  console.log(`  URL:     ${appUrl}\n`);
+
+  for (const note of notes) console.log(`  Note: ${note}`);
+  if (notes.length) console.log('');
+
+  console.log(`  Secrets must already be set with \`wrangler secret put\`: ${REQUIRED_SECRETS.join(', ')}.`);
+  console.log('  Preflight cannot read them — Cloudflare does not expose secret values.\n');
+}

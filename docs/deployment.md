@@ -82,6 +82,34 @@ npm run deploy:check
 
 Nothing is created or changed when it stops.
 
+### Deploying from Cloudflare Workers Builds (Git integration)
+
+When Cloudflare builds from the repository rather than you running `npm run
+deploy` locally, set the commands in **Workers & Pages → the Worker → Settings
+→ Build**:
+
+| Setting | Value |
+| --- | --- |
+| Build command | `npm run build` |
+| Deploy command | `npm run deploy` |
+
+**The deploy command matters.** Cloudflare's default is `npx wrangler deploy`,
+which skips `npm run deploy` and with it the preflight — so a placeholder
+`database_id` survives a green build and fails at the Cloudflare API with
+
+```
+binding DB of type d1 must have a valid `database_id` specified [code: 10021]
+```
+
+As a second line of defence `npm run build` runs the same check by itself when
+it detects Workers Builds (`WORKERS_CI*`), so the failure arrives in seconds
+with the command that fixes it even if the deploy command is left at its
+default. Set `DEPLOY_PREFLIGHT=0` as a build variable to opt out, or
+`DEPLOY_PREFLIGHT=1` to enforce it in another pipeline.
+
+Secrets set with `wrangler secret put` are already on the Worker and are not
+build variables; the build never needs them.
+
 ## 5. Create the first Super Admin
 
 There is no default account and no default password. Set two secrets, make one

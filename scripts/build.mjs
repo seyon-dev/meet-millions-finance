@@ -18,6 +18,9 @@
  *   icons        — a missing icon name falls back to the same generic mark
  *   env          — a key the code reads but nobody documented is a feature
  *                  that silently does nothing in production
+ *   deploy       — only inside Cloudflare Workers Builds: a placeholder
+ *                  resource id, which the deploy would reject a minute
+ *                  later with a bare error code
  *
  *   node scripts/build.mjs [--quiet]
  */
@@ -265,6 +268,31 @@ const routes = [...app.matchAll(/\broute\('([^']+)',\s*\(\)\s*=>\s*import\('([^'
   const { problems: envProblems, count } = await checkEnvDocs();
   for (const detail of envProblems) note('env', detail);
   say(`  env          ${count} variables documented`);
+}
+
+// ---- 12. Deployment readiness, in a pipeline that deploys --------------------
+//
+// Cloudflare Workers Builds runs `npm run build` and then a separate deploy
+// command, which defaults to `npx wrangler deploy` — so `npm run deploy`, and
+// with it scripts/preflight-deploy.mjs, is skipped entirely. That is how a
+// placeholder `database_id` got as far as the Cloudflare API and came back as
+//
+//   binding DB of type d1 must have a valid `database_id` specified [code: 10021]
+//
+// after a full build. Running the same check here fails in seconds instead,
+// and says which command produces the missing id.
+//
+// Deliberately NOT gated on plain CI: a test pipeline that builds without
+// deploying has no business needing real resource ids.
+{
+  const { preflightProblems, isDeployingCi } = await import('./preflight-deploy.mjs');
+  if (isDeployingCi()) {
+    for (const detail of preflightProblems()) note('deploy', detail);
+    say(`  deploy       checked (this build deploys)`);
+  } else {
+    const pending = preflightProblems().length;
+    say(`  deploy       ${pending ? `${pending} item(s) still to resolve before deploying` : 'ready'} (not enforced here)`);
+  }
 }
 
 // ---------------------------------------------------------------------------
