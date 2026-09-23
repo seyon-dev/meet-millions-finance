@@ -66,7 +66,24 @@ export async function ensureBootstrapped(env) {
 
   if (marker?.value_json === JSON.stringify(BOOTSTRAP_VERSION)) {
     settled.add(env.DB);
-    return { ran: false, reason: 'current' };
+
+    // The catalogue is current, but the first administrator is a separate
+    // question and the marker must not answer it.
+    //
+    // Creating one is documented as: set PLATFORM_OWNER_EMAIL and
+    // PLATFORM_OWNER_PASSWORD, restart, open /ready. That only ever worked on
+    // a deployment that had not bootstrapped yet — once the marker was
+    // written this returned here, and setting the variables afterwards did
+    // nothing at all. /ready still answered 200, reporting no owner and no
+    // error, so the documented recovery for "nobody can sign in" silently
+    // did nothing on precisely the deployments that needed it.
+    //
+    // seedPlatformOwner guards itself on all three counts — unset variables,
+    // an owner that already exists, a password under twelve characters — and
+    // returns without touching the database in each case, so attempting it
+    // once per process start costs nothing and cannot create a second owner.
+    const platformOwner = await seedPlatformOwner(db, env, nowIso());
+    return { ran: false, reason: 'current', report: { platformOwner } };
   }
 
   const report = await bootstrapPlatform(env);

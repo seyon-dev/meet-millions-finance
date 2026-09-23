@@ -1,6 +1,9 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from './helpers/app.js';
+import { D1Shim } from './helpers/d1.js';
+import { ensureBootstrapped } from '../src/services/bootstrap.js';
+import { verifyPassword } from '../src/auth/password.js';
 
 /**
  * A fresh deployment has to bring itself up.
@@ -208,4 +211,84 @@ describe('Deployment bootstrap', () => {
       app.DB.prepare = realPrepare;
     }
   });
+
+  /**
+   * Creating the first administrator on a deployment that is already running.
+   *
+   * The documented recovery for "the database has no accounts and nobody can
+   * sign in" is: set PLATFORM_OWNER_EMAIL and PLATFORM_OWNER_PASSWORD,
+   * restart, open /ready. That only worked on a deployment which had never
+   * bootstrapped. Once the catalogue marker was written, ensureBootstrapped
+   * returned at that check and never reached the owner seeding, so setting the
+   * variables afterwards did nothing — and /ready still answered 200 reporting
+   * no owner and no error. The recovery silently did nothing on exactly the
+   * deployments that needed it.
+   */
+  test('PLATFORM_OWNER_* creates the owner on an already-bootstrapped database', async () => {
+    const app = await createApp({ bootstrap: false });
+
+    await app.request('/ready');                       // catalogue seeded, no owner
+    assert.equal(await platformUsers(app), 0, 'nothing configured, so no owner yet');
+
+    // A restart hands the application a new binding over the same database.
+    const restarted = () => ({
+      ...app.env,
+      DB: new D1Shim(app.DB.sqlite),
+      PLATFORM_OWNER_EMAIL: 'owner@practice.example',
+      PLATFORM_OWNER_PASSWORD: 'A-Strong-Passw0rd!24',
+    });
+
+    const first = await ensureBootstrapped(restarted());
+    assert.equal(first.ran, false, 'the catalogue is current and is not re-seeded');
+    assert.equal(first.report?.platformOwner?.created, true, 'but the owner is created');
+    assert.equal(await platformUsers(app), 1);
+
+    // The account has to actually work, and to force a change of the password
+    // that was sitting in an environment variable.
+    const user = await app.DB.prepare(
+      'SELECT email, password_hash, must_change_password FROM users WHERE tenant_id IS NULL').first();
+    assert.equal(user.email, 'owner@practice.example');
+    assert.ok(await verifyPassword('A-Strong-Passw0rd!24', user.password_hash));
+    assert.ok(user.must_change_password, 'set from the environment, so it is changed at first sign-in');
+  });
+
+  test('a second restart does not create a second owner', async () => {
+    const app = await createApp({ bootstrap: false });
+    await app.request('/ready');
+
+    const restarted = () => ({
+      ...app.env,
+      DB: new D1Shim(app.DB.sqlite),
+      PLATFORM_OWNER_EMAIL: 'owner@practice.example',
+      PLATFORM_OWNER_PASSWORD: 'A-Strong-Passw0rd!24',
+    });
+
+    await ensureBootstrapped(restarted());
+    const again = await ensureBootstrapped(restarted());
+
+    assert.equal(again.report?.platformOwner?.created, false);
+    assert.equal(again.report?.platformOwner?.reason, 'already_exists');
+    assert.equal(await platformUsers(app), 1, 'still exactly one');
+  });
+
+  test('refuses a platform owner password under twelve characters', async () => {
+    const app = await createApp({ bootstrap: false });
+    await app.request('/ready');
+
+    const result = await ensureBootstrapped({
+      ...app.env,
+      DB: new D1Shim(app.DB.sqlite),
+      PLATFORM_OWNER_EMAIL: 'owner@practice.example',
+      PLATFORM_OWNER_PASSWORD: 'short',
+    });
+
+    assert.equal(result.report?.platformOwner?.reason, 'password_too_weak');
+    assert.equal(await platformUsers(app), 0,
+      'a weak password on the account that reaches every organisation is not accepted quietly');
+  });
 });
+
+async function platformUsers(app) {
+  const row = await app.DB.prepare('SELECT COUNT(*) AS n FROM users WHERE tenant_id IS NULL').first();
+  return Number(row.n);
+}

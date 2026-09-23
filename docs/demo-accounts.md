@@ -13,6 +13,15 @@ npm run seed            # against the configured MySQL database
 npm run seed -- --check # report the target and change nothing
 ```
 
+**This needs a shell.** On managed hosting that does not give you one —
+Hostinger's Node.js app among them — you cannot run it, so these accounts will
+not exist on that deployment and signing in with them returns *"That email
+address and password do not match an account."* That is the application being
+truthful, not a fault. Create a real account instead: `/register` makes a
+practice and its Admin, and `PLATFORM_OWNER_EMAIL` / `PLATFORM_OWNER_PASSWORD`
+makes a Super Admin. See
+[hostinger-deployment.md](hostinger-deployment.md#8-create-the-first-administrator).
+
 Running it a second time writes nothing: it finds the organisation and says
 so. It never drops, truncates or deletes.
 

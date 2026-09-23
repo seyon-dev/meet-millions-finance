@@ -281,12 +281,33 @@ If the tables are missing it says so instead.
 
 There is no default account and no default password.
 
+You have two ways in, and they make different accounts.
+
+### The quick one: create an organisation
+
+Open `https://your-domain/register` and fill in the form. That creates a
+practice and makes you its **Admin** — everything except the platform screens
+(`/platform/*`), which sit above every organisation. No environment variables,
+no restart. If you only need to use the CRM, this is enough.
+
+### The platform owner: a Super Admin who sees every organisation
+
 1. Add two more environment variables:
    - `PLATFORM_OWNER_EMAIL` — your email address
    - `PLATFORM_OWNER_PASSWORD` — a password of at least 12 characters
 2. Restart the application.
 3. Visit `https://your-domain/ready` in a browser. It answers with JSON saying
-   what it set up.
+   what it set up. Look at `platformOwner`:
+
+   | What it says | What happened |
+   | --- | --- |
+   | `{"created": true, …}` | The account exists. Sign in. |
+   | `{"created": false, "reason": "not_configured"}` | The variables did not reach the process. Check them, restart again. |
+   | `{"created": false, "reason": "password_too_weak"}` | Under 12 characters. |
+   | `{"created": false, "reason": "already_exists"}` | There is already a platform owner. |
+
+   This works whether or not the deployment has run before — it is checked on
+   every start, and it will not create a second owner.
 4. Sign in at `https://your-domain/login`. You will be asked to change the
    password immediately. (`/` is the public landing page; the **Sign in**
    button on it goes to the same place.)
