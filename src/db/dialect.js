@@ -48,13 +48,106 @@ export function mysqlIdent(name) {
 }
 
 /**
+ * The reserved words this schema actually uses as column names.
+ *
+ * Deliberately not the whole RESERVED list. Quoting every reserved word inside
+ * a statement would backtick SELECT, FROM and WHERE along with the columns —
+ * the words are only a problem where they appear as *identifiers*, and which
+ * ones do is a fact about this schema. tests/dialect.test.js reads
+ * database/mysql-schema.sql and fails if a migration ever adds another, so the
+ * set cannot drift away from the tables.
+ */
+export const SCHEMA_RESERVED = new Set(['key', 'trigger']);
+
+/**
+ * Backtick the reserved words this schema uses as column names.
+ *
+ * This is the bug that took the deployment down. The schema generator quotes
+ * them in the DDL — `mysqlIdent` above, used by scripts/mysql-schema.mjs — so
+ * MySQL happily holds a column called `key`. Nothing quoted them at *query*
+ * time, so every statement reading one went out as `... AND key = ?` and MySQL
+ * answered with a 1064 syntax error. The very first of them is the one
+ * `ensureBootstrapped` runs, which is on the path of every request.
+ *
+ * SQLite never complained, so no test could see it: `key` is an ordinary
+ * identifier there.
+ *
+ * Quoting has to be literal-aware — `namespace = 'key'` is a value, not a
+ * column, and `\`key\`` is already done. So this walks the statement rather
+ * than running a regex over it, stepping over string literals, quoted
+ * identifiers and comments whole.
+ */
+export function quoteReservedIdentifiers(sql, words = SCHEMA_RESERVED) {
+  const text = String(sql);
+  let out = '';
+  let i = 0;
+
+  while (i < text.length) {
+    const ch = text[i];
+
+    // A string literal or an already-quoted identifier: copy it verbatim.
+    if (ch === "'" || ch === '"' || ch === '`') {
+      let j = i + 1;
+      while (j < text.length) {
+        if (text[j] === '\\') { j += 2; continue; }        // \' escape
+        if (text[j] === ch) {
+          if (text[j + 1] === ch) { j += 2; continue; }      // '' escape
+          break;
+        }
+        j += 1;
+      }
+      out += text.slice(i, j + 1);
+      i = j + 1;
+      continue;
+    }
+
+    // Comments, for the same reason.
+    if (ch === '-' && text[i + 1] === '-') {
+      const end = text.indexOf('\n', i);
+      const stop = end === -1 ? text.length : end;
+      out += text.slice(i, stop);
+      i = stop;
+      continue;
+    }
+    if (ch === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      const stop = end === -1 ? text.length : end + 2;
+      out += text.slice(i, stop);
+      i = stop;
+      continue;
+    }
+
+    // A bare word.
+    if (/[A-Za-z_]/.test(ch)) {
+      let j = i;
+      while (j < text.length && /[\w$]/.test(text[j])) j += 1;
+      const word = text.slice(i, j);
+      out += words.has(word.toLowerCase()) ? `\`${word}\`` : word;
+      i = j;
+      continue;
+    }
+
+    out += ch;
+    i += 1;
+  }
+
+  return out;
+}
+
+/**
  * Translate one statement.
  *
  * Deliberately conservative — each rule below exists because a specific
  * statement in this codebase needs it.
  */
 export function toMysql(sql) {
-  let out = String(sql);
+  // First, before anything below introduces SQL of its own. The ON CONFLICT
+  // rewrite emits `ON DUPLICATE KEY UPDATE`, where KEY is syntax rather than a
+  // column — quoting after that rule would break the statement it just built.
+  // The statements arriving here are SQLite-flavoured and never contain that
+  // phrase, so doing it first is safe. DDL never reaches this function at all:
+  // the migration runner goes through MysqlD1.exec, which does not translate.
+  let out = quoteReservedIdentifiers(String(sql));
 
   // INSERT OR IGNORE → INSERT IGNORE. Used by the bootstrap seeder and the
   // rate limiter, both of which rely on the insert being a no-op on conflict.

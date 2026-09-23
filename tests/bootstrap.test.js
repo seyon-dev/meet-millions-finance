@@ -137,4 +137,75 @@ describe('Deployment bootstrap', () => {
     const rows = await db.one('SELECT COUNT(*) AS n FROM settings');
     assert.equal(Number(rows.n), 1, 'one marker row, not one per run');
   });
+
+  /**
+   * The Hostinger outage, in one test.
+   *
+   * ensureBootstrapped ran *above* the handler's try/catch, so anything it
+   * threw bypassed every piece of error handling below it: no requestId, no
+   * `unhandled` log line, no system-event row. The exception left the Worker
+   * altogether and the Express wrapper answered with a bare 500 carrying no
+   * request id — so the runtime logs had nothing tying the failure to a cause,
+   * on a code path every single request goes through.
+   *
+   * What actually threw was a MySQL 1064: the bootstrap's first statement
+   * filters on `key`, a reserved word, and nothing quoted it at query time.
+   * That half is covered in tests/dialect.test.js. This half is the blind
+   * spot, which would have hidden the next failure just as well.
+   */
+  test('a failing bootstrap returns a handled error with a request id', async () => {
+    const app = await createApp({ bootstrap: false });
+
+    // Stand in for the 1064: the first statement the bootstrap issues throws.
+    const realPrepare = app.DB.prepare.bind(app.DB);
+    app.DB.prepare = (sql) => {
+      if (/FROM settings/i.test(sql) && /bootstrap_version/.test(sql)) {
+        const err = new Error("You have an error in your SQL syntax near 'key = ...'");
+        err.code = 'ER_PARSE_ERROR';
+        throw err;
+      }
+      return realPrepare(sql);
+    };
+
+    try {
+      const res = await app.request('/ready');
+
+      assert.equal(res.status, 500, 'the failure is reported, not swallowed');
+      assert.ok(res.body?.meta?.requestId,
+        'the response carries a requestId — without one the runtime logs cannot be tied to it');
+      // db_error, not internal_error: the Db layer types the failure on the
+      // way past, which is the handling that was being skipped. It is not
+      // `expose`d, so fail() swaps the message for the generic sentence and
+      // the SQL stays in the log where it belongs.
+      assert.equal(res.body?.error?.code, 'db_error');
+      assert.doesNotMatch(String(res.body?.error?.message ?? ''), /SQL syntax/,
+        'the database error is logged, never shown to the caller');
+      assert.doesNotMatch(String(res.body?.error?.message ?? ''), /settings|key/i,
+        'nor is the statement that failed');
+    } finally {
+      app.DB.prepare = realPrepare;
+    }
+  });
+
+  test('the same holds for an ordinary API request, not just /ready', async () => {
+    const app = await createApp({ bootstrap: false });
+
+    const realPrepare = app.DB.prepare.bind(app.DB);
+    app.DB.prepare = (sql) => {
+      if (/FROM settings/i.test(sql) && /bootstrap_version/.test(sql)) {
+        throw new Error('bootstrap unavailable');
+      }
+      return realPrepare(sql);
+    };
+
+    try {
+      const res = await app.request('/api/auth/login', {
+        method: 'POST', body: { email: 'someone@example.test', password: 'whatever-it-is' },
+      });
+      assert.equal(res.status, 500);
+      assert.ok(res.body?.meta?.requestId, 'every request path gets a requestId, not only /ready');
+    } finally {
+      app.DB.prepare = realPrepare;
+    }
+  });
 });

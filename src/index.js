@@ -72,30 +72,38 @@ export default {
       });
     }
 
-    // A Worker has no deploy hook: nothing runs between `wrangler deploy` and
-    // the first request. The catalogue every request is authorised against —
-    // permissions, roles, plans, the add-on list — is therefore seeded here,
-    // once per isolate, before the router is entered.
-    const bootstrap = await ensureBootstrapped(env);
-
-    // Readiness, for a deploy pipeline: says whether this deployment has its
-    // catalogue, and seeds it if not.
-    if (ctx.pathname === '/ready') {
-      return json({
-        success: true,
-        data: {
-          status: 'ready',
-          seededNow: bootstrap.ran,
-          catalogueVersion: BOOTSTRAP_VERSION,
-          // Present only on the request that did the seeding.
-          platformOwner: bootstrap.report?.platformOwner ?? null,
-        },
-        error: null,
-        meta: { timestamp: new Date().toISOString() },
-      });
-    }
-
     try {
+      // A Worker has no deploy hook: nothing runs between `wrangler deploy`
+      // and the first request. The catalogue every request is authorised
+      // against — permissions, roles, plans, the add-on list — is therefore
+      // seeded here, once per isolate, before the router is entered.
+      //
+      // Inside the try, and this matters. It used to sit above it, so a
+      // failure in here missed every bit of handling below: no requestId, no
+      // `unhandled` log line, no system-event row. The exception escaped the
+      // Worker entirely and was caught by the Express wrapper, which answers
+      // with a bare 500 carrying no request id — leaving nothing in the logs
+      // to tie the response to a cause. This is on the path of *every*
+      // request, so that blind spot covered the whole application.
+      const bootstrap = await ensureBootstrapped(env);
+
+      // Readiness, for a deploy pipeline: says whether this deployment has its
+      // catalogue, and seeds it if not.
+      if (ctx.pathname === '/ready') {
+        return json({
+          success: true,
+          data: {
+            status: 'ready',
+            seededNow: bootstrap.ran,
+            catalogueVersion: BOOTSTRAP_VERSION,
+            // Present only on the request that did the seeding.
+            platformOwner: bootstrap.report?.platformOwner ?? null,
+          },
+          error: null,
+          meta: { timestamp: new Date().toISOString() },
+        });
+      }
+
       const response = await router.handle(ctx);
       return withCors(response, request, env);
     } catch (err) {
