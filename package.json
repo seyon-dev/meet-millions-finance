@@ -21,7 +21,7 @@
     "migrate": "node scripts/migrate-mysql.mjs",
     "migrate:check": "node scripts/migrate-mysql.mjs --check",
     "schema:mysql": "node scripts/mysql-schema.mjs",
-    "seed": "node scripts/seed-demo.mjs",
+    "seed": "node scripts/seed-demo-cli.mjs",
     "legacy:dev-wrangler": "wrangler dev",
     "legacy:deploy": "node scripts/preflight-deploy.mjs && wrangler deploy",
     "legacy:deploy-check": "node scripts/preflight-deploy.mjs",

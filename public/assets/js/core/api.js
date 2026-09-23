@@ -55,8 +55,16 @@ export class ValidationError extends ApiError {
   constructor(message, meta) {
     super(message, meta);
     this.name = 'ValidationError';
-    /** @type {Record<string,string>} field → message */
-    this.fields = meta?.details ?? {};
+    /**
+     * field → message.
+     *
+     * The server nests these: `details: { fields: { gstin: "…" } }` — see
+     * ValidationError in src/http/errors.js. Reading `details` alone gave
+     * `{ fields: {…} }`, so every caller that took the first entry got an
+     * object where it expected a string and rendered "[object Object]".
+     * That was every validation error in the application, not just one form.
+     */
+    this.fields = meta?.details?.fields ?? {};
   }
 }
 

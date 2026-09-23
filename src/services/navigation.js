@@ -29,6 +29,9 @@ const NAV = {
       { key: 'organisations',      label: 'Organisations',  path: '/platform/organisations', icon: 'building',        permission: 'tenants.view' },
       { key: 'franchises',         label: 'Franchises',     path: '/platform/franchises',    icon: 'network',         permission: 'franchises.view', feature: 'franchise' },
       { key: 'plans',              label: 'Plans & Pricing',path: '/platform/plans',         icon: 'tag',             permission: 'plans.manage' },
+      // The revenue screen and its route existed from the start with nothing
+      // linking to them, so the only way to reach it was to type the URL.
+      { key: 'platform_revenue',   label: 'Revenue',        path: '/platform/revenue',       icon: 'trending-up',     permission: 'platform.analytics' },
       { key: 'system_logs',        label: 'System Logs',    path: '/platform/logs',          icon: 'terminal',        permission: 'platform.logs.view' },
     ],
   },

@@ -34,7 +34,7 @@ export function authLayout({ title, subtitle, form, aside = null }) {
       // the legal note out side by side — the brand floating against the left
       // edge and the note colliding with the fields.
       el('div.mm-auth__inner',
-        el('a.mm-auth__brand', { href: '/login', 'aria-label': 'Meet Millions Finance CRM' },
+        el('a.mm-auth__brand', { href: '/', 'aria-label': 'Meet Millions Finance CRM — home' },
           el('span.mm-brand-mark', { text: 'MM' }),
           el('div.mm-brand-text',
             el('span.mm-brand-text__name', { text: 'Meet Millions' }),
@@ -77,14 +77,23 @@ function stat(value, label) {
     el('p.mm-auth__stat-k', { text: label }));
 }
 
-/** A labelled form field. */
-export function field({ label, input, id, hint = null, action = null, required = false }) {
+/**
+ * A labelled form field.
+ *
+ * `below` is for anything that belongs to this input rather than to the form —
+ * the password meter, most obviously. Passing it here rather than dropping it
+ * in as the field's next sibling is what keeps it visually attached: the form
+ * puts a full step of space between its rows, and a meter a full step away
+ * from its own password box reads as a separate thing.
+ */
+export function field({ label, input, id, hint = null, action = null, required = false, below = null }) {
   return el('div.mm-field',
     el('div.mm-row.mm-between.mm-baseline',
       el('label.mm-field__label', { for: id, text: label },
         required ? el('span.mm-field__req', { 'aria-hidden': 'true', text: '*' }) : null),
       action),
     input,
+    below,
     hint ? el('p.mm-field__hint', { text: hint }) : null);
 }
 

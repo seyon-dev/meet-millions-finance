@@ -365,7 +365,14 @@
   line-height: var(--mm-leading-relaxed);
   max-width: 38ch;
 }
-.mm-auth__form { display: flex; flex-direction: column; gap: var(--mm-space-5); margin-top: var(--mm-space-7); }
+/* The rows of an auth form.
+   .mm-auth__fields carries the same rule because registration re-renders its
+   rows into a nested host when the step changes. That host was a bare <div>,
+   so the form's own gap stopped at it and every label sat flush on the input
+   above — the fields read as one unbroken column with no grouping at all. */
+.mm-auth__form,
+.mm-auth__fields { display: flex; flex-direction: column; gap: var(--mm-space-5); }
+.mm-auth__form { margin-top: var(--mm-space-7); }
 .mm-auth__foot { margin-top: var(--mm-space-6); font-size: var(--mm-text-sm); color: var(--mm-text-tertiary); text-align: center; }
 
 .mm-auth__legal {
@@ -462,6 +469,82 @@
   letter-spacing: var(--mm-tracking-caps); color: #6E86B8;
   margin-top: var(--mm-space-2); white-space: nowrap;
 }
+
+/* ---- Fields, on the auth screens only ------------------------------------
+   The application's inputs are 38px with 14px text, which is right for a
+   dense table-heavy workspace and wrong for the first screen somebody sees.
+   These rules are scoped to .mm-auth so the rest of the product keeps its
+   density: a sign-in field wants to be comfortably hittable and unhurried,
+   a filter row on the documents screen does not.
+   -------------------------------------------------------------------------- */
+.mm-auth .mm-input,
+.mm-auth .mm-select {
+  min-height: 50px;
+  padding: var(--mm-space-3) var(--mm-space-4);
+  font-size: var(--mm-text-md);
+  border-radius: var(--mm-radius-lg, 10px);
+  background: rgba(10, 17, 33, 0.55);
+  border-color: rgba(148, 178, 255, 0.16);
+}
+.mm-auth .mm-input::placeholder { color: rgba(148, 178, 255, 0.38); }
+.mm-auth .mm-input:hover:not(:disabled) { border-color: rgba(148, 178, 255, 0.30); }
+.mm-auth .mm-input:focus {
+  background: rgba(13, 22, 43, 0.92);
+  border-color: var(--mm-primary);
+  box-shadow: 0 0 0 4px rgba(47, 107, 255, 0.16);
+}
+
+/* Labels sit closer to their field than to the one above, so the eye groups
+   them correctly instead of reading label and field as separate rows. */
+.mm-auth .mm-field { gap: var(--mm-space-2); }
+.mm-auth .mm-field__label {
+  font-size: var(--mm-text-sm);
+  font-weight: var(--mm-weight-medium, 500);
+  color: var(--mm-text-secondary);
+  letter-spacing: -0.005em;
+}
+/* A hint belongs to the field above it, not floating between two. */
+.mm-auth .mm-field__hint {
+  font-size: var(--mm-text-xs);
+  color: var(--mm-text-tertiary);
+  margin-top: calc(var(--mm-space-1) * -1);
+}
+
+/* The step marker was the same size and weight as a field label, so the form
+   read as one undifferentiated column. */
+.mm-auth .mm-eyebrow {
+  font-size: var(--mm-text-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--mm-tracking-caps);
+  color: #6E86B8;
+  padding-bottom: var(--mm-space-3);
+  border-bottom: 1px solid var(--mm-border-subtle);
+  /* No margin: the column's gap is the separation now. Adding one on top of
+     it put the step marker adrift from the fields it heads. */
+}
+
+.mm-auth .mm-btn {
+  min-height: 50px;
+  font-size: var(--mm-text-md);
+  border-radius: var(--mm-radius-lg, 10px);
+}
+/* The submit button ends the form; it is not one more row in the same rhythm,
+   so it gets a wider step than the gap between two inputs. */
+.mm-auth__form > .mm-btn--block,
+.mm-auth__fields > .mm-btn--block { margin-top: var(--mm-space-2); }
+.mm-auth .mm-btn--primary {
+  box-shadow: 0 6px 20px -8px rgba(47, 107, 255, 0.65);
+}
+.mm-auth .mm-btn--primary:hover:not(:disabled) {
+  box-shadow: 0 10px 28px -10px rgba(47, 107, 255, 0.8);
+  transform: translateY(-1px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mm-auth .mm-btn--primary:hover:not(:disabled) { transform: none; }
+}
+
+/* The password strength meter reads as part of the field it belongs to. */
+.mm-auth .mm-meter { margin-top: calc(var(--mm-space-1) * -1); }
 
 /* On a phone the story side is hidden, so the form gets the whole screen and
    the type comes down a step to suit the narrower measure. */

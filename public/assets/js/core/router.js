@@ -81,6 +81,9 @@ export function setQuery(updates, { replace = true } = {}) {
 
 let outlet = null;
 let token = 0;
+/** The path and query this router last rendered, so a hash-only change is
+    recognisable as something it does not own. */
+let resolvedUrl = null;
 
 export function mount(node) { outlet = node; }
 
@@ -120,6 +123,7 @@ export async function resolve() {
     outlet.replaceChildren(renderRouteError(err));
   }
 
+  resolvedUrl = pathname + window.location.search;
   window.scrollTo({ top: 0, behavior: 'instant' });
   document.dispatchEvent(new CustomEvent('mm:navigated', { detail: current }));
 }
@@ -152,6 +156,14 @@ export function start() {
     go(url.pathname + url.search);
   });
 
-  window.addEventListener('popstate', () => resolve());
+  window.addEventListener('popstate', () => {
+    // A fragment link is a same-document navigation, and the platform fires
+    // popstate for those too. Re-resolving on one rebuilt the whole screen and
+    // then scrolled it back to the top — so clicking an in-page anchor set the
+    // hash, threw away the element it pointed at, and went nowhere. Only a
+    // change of path or query is a navigation this router owns.
+    if (window.location.pathname + window.location.search === resolvedUrl) return;
+    resolve();
+  });
   return resolve();
 }

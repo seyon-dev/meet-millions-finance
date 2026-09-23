@@ -20,7 +20,15 @@ import { nowIso, dayKey, monthKey, addDays, addHours } from '../src/utils/time.j
 import { PdfDocument } from '../src/services/pdf.js';
 import { putObject, documentKey, tenantAssetKey } from '../src/services/storage.js';
 
-const PASSWORD = 'Demo-Passw0rd!24';
+/**
+ * The password every demonstration account gets.
+ *
+ * Overridable so a deployed demonstration is not sitting behind a password
+ * published in this repository — scripts/seed-demo-cli.mjs insists on the
+ * override when NODE_ENV=production.
+ */
+export const DEMO_PASSWORD = process.env.DEMO_PASSWORD || 'Demo-Passw0rd!24';
+const PASSWORD = DEMO_PASSWORD;
 /** Sits above every organisation, so it belongs to no tenant. */
 const PLATFORM_EMAIL = 'devika@meetmillions.example';
 

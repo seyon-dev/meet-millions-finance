@@ -20,7 +20,11 @@ export default async function registerScreen() {
   const values = {};
 
   const errorHost = el('div');
-  const formHost = el('div');
+  // The rows live in here, not straight in the <form>, because the step
+  // swap re-renders only this part. It needs the form's own column spacing:
+  // without it every label sat flush on the box above it and the two steps
+  // read as one undivided wall of inputs.
+  const formHost = el('div.mm-auth__fields');
 
   const form = el('form.mm-auth__form', {
     novalidate: true,
@@ -52,9 +56,8 @@ export default async function registerScreen() {
       field({ label: 'Mobile number', id: 'mm-phone', input: phone, required: true }),
       field({
         label: 'Password', id: 'mm-password', input: password, required: true,
-        hint: null,
+        below: passwordMeter(password),
       }),
-      passwordMeter(password),
       blockButton('Continue'),
       el('p.mm-auth__foot',
         'Already have an account? ',

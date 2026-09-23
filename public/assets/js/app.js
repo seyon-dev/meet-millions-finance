@@ -14,7 +14,7 @@ import { onSessionLost } from './core/api.js';
 import { notify } from './core/ui.js';
 
 const PUBLIC_PATHS = new Set([
-  '/login', '/register', '/forgot-password', '/reset-password', '/verify-2fa', '/accept-invite',
+  '/', '/login', '/register', '/forgot-password', '/reset-password', '/verify-2fa', '/accept-invite',
 ]);
 
 const root = document.getElementById('mm-app');
@@ -65,11 +65,12 @@ async function guard(pathname) {
     const next = pathname === '/' ? '' : `?next=${encodeURIComponent(pathname + window.location.search)}`;
     return `/login${next}`;
   }
+  // Somebody with a session has no business on the signed-out screens, `/`
+  // included: they get their own dashboard. A visitor without one falls
+  // through to the landing page — a practice deciding whether to open an
+  // account should not be met by a password box.
   if (signedIn && PUBLIC_PATHS.has(pathname)) {
     return session.landingPath();
-  }
-  if (pathname === '/') {
-    return signedIn ? session.landingPath() : '/login';
   }
 
   // A password the administrator forced a change on: nothing else opens until
@@ -199,6 +200,9 @@ function registerRoutes() {
   route('/client/reports', () => import('./screens/reports/list.js'));
   route('/client/payments', () => import('./screens/billing/payments.js'));
   route('/client/invoices', () => import('./screens/billing/invoices.js'));
+
+  // -- Public ------------------------------------------------------------
+  route('/', () => import('./screens/landing.js'));
 
   // -- Platform (Super Admin) --------------------------------------------
   route('/platform/organisations', () => import('./screens/platform/tenants.js'));

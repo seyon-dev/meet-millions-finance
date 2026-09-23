@@ -103,6 +103,19 @@ const ROUTES = [
   { path: '/client/payments', expect: 'h1', as: 'client' },
 ];
 
+/**
+ * The screens somebody sees before they have an account.
+ *
+ * These were missing from the sweep entirely: it signed in first and walked
+ * the application, so the landing page and the registration form — the two
+ * screens a visitor meets before anything else — were never opened by it.
+ */
+const PUBLIC_ROUTES = [
+  { path: '/', expect: '.mm-landing' },
+  { path: '/register', expect: '.mm-auth__form' },
+  { path: '/forgot-password', expect: '.mm-auth__form' },
+];
+
 let sessionToken = null;
 let platformToken = null;
 let clientToken = null;
@@ -196,6 +209,37 @@ try {
       if (response.status() < 500) return;
       record(currentRoute, viewport.name, 'server', `${response.status()} ${response.url()}`);
     });
+
+    // ---- The signed-out screens ------------------------------------------
+    // Walked before signing in, because that is the only state they exist in:
+    // the router sends a visitor with a session straight to their dashboard.
+    for (const route of PUBLIC_ROUTES) {
+      if (only && !route.path.includes(only)) continue;
+      if (onlyList.length && !onlyList.includes(route.path)) continue;
+      currentRoute = route.path;
+
+      await spendRequestBudget(page, 3);
+      await page.goto(`${base}${route.path}`, { waitUntil: 'networkidle' });
+
+      try {
+        await page.waitForSelector(route.expect, { timeout: 10000 });
+      } catch {
+        record(route.path, viewport.name, 'blocked', `${route.expect} never appeared.`);
+        continue;
+      }
+
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth);
+      if (overflow > 1) {
+        record(route.path, viewport.name, 'overflow', `${overflow}px wider than the viewport.`);
+      }
+      if (shots) {
+        await page.screenshot({
+          path: `${shotDir}/${viewport.name}-${route.path === '/' ? 'landing' : route.path.slice(1).replace(/\//g, '-')}.png`,
+          fullPage: true,
+        });
+      }
+    }
 
     // ---- Sign in ---------------------------------------------------------
     // The form is driven once, at the first width, so the sign-in screen is

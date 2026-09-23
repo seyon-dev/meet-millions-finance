@@ -898,3 +898,335 @@
 
 /* A chatbot-flow simulation has no timestamps — speaker and text only. */
 .mm-transcript--sim .mm-transcript__line { grid-template-columns: 72px minmax(0, 1fr); }
+
+/* ==========================================================================
+   LANDING PAGE
+
+   The public page at /. It shares the product's tokens and brand marks so it
+   does not read as a different company from the application behind it, but it
+   gets a scale the workspace never would: this is the one screen whose job is
+   to be read rather than worked in.
+   ========================================================================== */
+.mm-landing {
+  position: relative; min-height: 100dvh; isolation: isolate;
+  background: #060A14; color: var(--mm-text-primary);
+  /* clip, not hidden.
+     `overflow-x: hidden` forces overflow-y to `auto`, which makes this element
+     a scroll container — one the full height of its own content, inside a page
+     that is the thing actually scrolling. The sticky header positions itself
+     against the nearest scrollport, so it anchored to a box that never moves
+     and scrolled away with the page. `clip` cuts the horizontal overflow
+     without making a scroller of the element. */
+  overflow-x: clip;
+}
+/* Safari before 16 does not know overflow: clip. The decorative backdrop is
+   the only thing that overflows, and it already clips itself, so leaving the
+   container unclipped there costs nothing. */
+@supports not (overflow: clip) {
+  .mm-landing { overflow-x: visible; }
+}
+
+/* ---- Backdrop ------------------------------------------------------------ */
+.mm-landing__bg { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.mm-landing__orb { position: absolute; border-radius: 50%; filter: blur(130px); opacity: 0.5; }
+.mm-landing__orb--1 {
+  width: 52vw; height: 52vw; min-width: 460px; min-height: 460px; top: -18vw; left: -12vw;
+  background: radial-gradient(circle, rgba(47,107,255,0.55), transparent 66%);
+  animation: mm-drift-a 38s ease-in-out infinite;
+}
+.mm-landing__orb--2 {
+  width: 40vw; height: 40vw; min-width: 340px; min-height: 340px; top: 8vw; right: -12vw;
+  background: radial-gradient(circle, rgba(34,211,238,0.34), transparent 68%);
+  animation: mm-drift-b 48s ease-in-out infinite;
+}
+.mm-landing__grid {
+  position: absolute; inset: -60px;
+  background-image:
+    linear-gradient(to right, rgba(148,178,255,0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148,178,255,0.05) 1px, transparent 1px);
+  background-size: 62px 62px;
+  mask-image: radial-gradient(ellipse 70% 45% at 50% 12%, #000 0%, transparent 72%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 45% at 50% 12%, #000 0%, transparent 72%);
+  animation: mm-grid-pan 70s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mm-landing__orb, .mm-landing__grid { animation: none !important; }
+  .mm-landing__step, .mm-landing__pillar, .mm-landing__hero-copy > *, .mm-landing__panel {
+    animation: none !important; opacity: 1; transform: none;
+  }
+  /* The sticky bar keeps its separation, it just stops being revealed by the
+     scroll position. The colour needs !important because the @supports block
+     that hides it until you scroll comes later in this file and would
+     otherwise win — leaving the bar with no edge at all. */
+  .mm-landing__navbar {
+    animation: none !important;
+    border-bottom-color: rgba(148, 178, 255, 0.12) !important;
+  }
+}
+
+.mm-landing > *:not(.mm-landing__bg, .mm-landing__navbar),
+.mm-landing__nav {
+  position: relative; z-index: 1;
+  max-width: 1200px; margin-inline: auto;
+  padding-inline: var(--mm-space-6);
+}
+@media (max-width: 720px) {
+  .mm-landing > *:not(.mm-landing__bg, .mm-landing__navbar),
+  .mm-landing__nav { padding-inline: var(--mm-space-4); }
+}
+
+/* ---- Header -------------------------------------------------------------- */
+/* Sticky, so the two things a visitor came to do stay one click away however
+   far down the page they read. The blur is what keeps the bar legible over
+   the moving backdrop without covering it with a solid block. */
+.mm-landing__navbar {
+  position: sticky; top: 0; z-index: 20;
+  background: rgba(7, 12, 24, 0.72);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border-bottom: 1px solid rgba(148, 178, 255, 0.12);
+}
+/* Where scroll-driven animation exists, the rule is held back until the page
+   has moved, so the bar reads as part of the hero at rest and separates itself
+   once it starts overlapping content. Where it does not, the border is simply
+   always there — a sticky bar with no edge over scrolling content is worse
+   than one with an edge it did not need at the top. */
+@supports (animation-timeline: scroll()) {
+  .mm-landing__navbar {
+    border-bottom-color: transparent;
+    animation: mm-landing-navbar linear both;
+    animation-timeline: scroll();
+    animation-range: 0 120px;
+  }
+}
+@keyframes mm-landing-navbar {
+  to { border-bottom-color: rgba(148, 178, 255, 0.12); }
+}
+.mm-landing__nav {
+  display: flex; align-items: center; gap: var(--mm-space-6);
+  padding-block: var(--mm-space-4);
+}
+/* An anchor target must clear the sticky bar, or the heading it points at
+   lands underneath it. */
+.mm-landing__section { scroll-margin-top: 88px; }
+.mm-landing__brand { display: inline-flex; align-items: center; gap: var(--mm-space-3); text-decoration: none; color: inherit; }
+.mm-landing__navlinks { display: none; gap: var(--mm-space-6); margin-inline-start: auto; }
+@media (min-width: 900px) { .mm-landing__navlinks { display: flex; } }
+.mm-landing__navlinks a {
+  color: var(--mm-text-secondary); text-decoration: none; font-size: var(--mm-text-md);
+  transition: color var(--mm-dur-fast) var(--mm-ease-out);
+}
+.mm-landing__navlinks a:hover { color: var(--mm-text-primary); }
+.mm-landing__navcta { display: flex; gap: var(--mm-space-3); margin-inline-start: auto; }
+@media (min-width: 900px) { .mm-landing__navcta { margin-inline-start: 0; } }
+@media (max-width: 560px) { .mm-landing__navcta .mm-btn--ghost { display: none; } }
+
+/* ---- Hero ---------------------------------------------------------------- */
+.mm-landing__hero {
+  display: grid; grid-template-columns: 1fr; gap: var(--mm-space-8);
+  padding-block: var(--mm-space-9) var(--mm-space-9);
+  align-items: center;
+}
+/* Two columns only once there is room for both.
+   At 1024 this split left the headline about 470px to work in while the
+   display face was still near 65px, so "in one workspace" broke across two
+   lines and the gradient restarted on each. One column at that width gives
+   the headline the whole measure and it sets in two lines as intended. */
+@media (min-width: 1140px) { .mm-landing__hero { grid-template-columns: 1.05fr 0.95fr; gap: var(--mm-space-9); } }
+/* Single column: the headline still wants a measure, not the whole window. */
+@media (max-width: 1139px) {
+  .mm-landing__h1, .mm-landing__lede { max-width: 20ch; }
+  .mm-landing__lede { max-width: 56ch; }
+  .mm-landing__panel { max-width: 560px; }
+}
+.mm-landing__hero-copy > * { animation: mm-auth-rise 0.7s cubic-bezier(0.22,1,0.36,1) both; }
+.mm-landing__hero-copy > *:nth-child(2) { animation-delay: 0.08s; }
+.mm-landing__hero-copy > *:nth-child(3) { animation-delay: 0.16s; }
+.mm-landing__hero-copy > *:nth-child(4) { animation-delay: 0.24s; }
+.mm-landing__hero-copy > *:nth-child(5) { animation-delay: 0.3s; }
+
+.mm-landing__eyebrow {
+  display: inline-flex; align-items: center; gap: var(--mm-space-2);
+  font-size: var(--mm-text-xs); text-transform: uppercase; letter-spacing: var(--mm-tracking-caps);
+  color: #8FB4FF; padding: var(--mm-space-2) var(--mm-space-3);
+  border: 1px solid rgba(122,164,255,0.22); border-radius: 999px;
+  background: rgba(47,107,255,0.10); margin-bottom: var(--mm-space-5);
+}
+.mm-landing__pip {
+  width: 6px; height: 6px; border-radius: 50%; background: #6FE7F5;
+  box-shadow: 0 0 0 3px rgba(111,231,245,0.18);
+}
+
+.mm-landing__h1 {
+  font-family: var(--mm-font-display);
+  font-size: clamp(2.5rem, 1.1rem + 4.6vw, 4.5rem);
+  font-weight: var(--mm-weight-bold); letter-spacing: -0.038em; line-height: 1.02;
+  display: flex; flex-direction: column; text-wrap: balance;
+}
+.mm-landing__h1-em {
+  background: linear-gradient(96deg, #8FB4FF 0%, #6FE7F5 52%, #A78BFA 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+}
+.mm-landing__lede {
+  font-size: var(--mm-text-lg); color: #9FB2D2; line-height: 1.65;
+  margin-top: var(--mm-space-5); max-width: 52ch;
+}
+.mm-landing__cta { display: flex; flex-wrap: wrap; gap: var(--mm-space-3); margin-top: var(--mm-space-7); }
+/* Scoped. Unscoped, this silently resized every large button in the product
+   from the design system's 44px to 52px, from a rule sitting in the middle of
+   a landing-page block — the next screen to use one would have inherited a
+   landing page's proportions with nothing to say why. */
+.mm-landing .mm-btn--lg {
+  min-height: 52px; padding-inline: var(--mm-space-6);
+  font-size: var(--mm-text-md); border-radius: 10px;
+}
+.mm-landing__note { font-size: var(--mm-text-sm); color: var(--mm-text-tertiary); margin-top: var(--mm-space-4); }
+
+/* ---- The month panel ----------------------------------------------------- */
+.mm-landing__panel {
+  border: 1px solid rgba(148,178,255,0.14); border-radius: 16px;
+  background: linear-gradient(165deg, rgba(14,23,45,0.92), rgba(8,13,26,0.92));
+  box-shadow: 0 30px 80px -40px rgba(0,0,0,0.9);
+  overflow: hidden;
+  animation: mm-auth-rise 0.8s cubic-bezier(0.22,1,0.36,1) 0.2s both;
+}
+.mm-landing__panel-bar {
+  display: flex; align-items: center; gap: var(--mm-space-2);
+  padding: var(--mm-space-3) var(--mm-space-4);
+  border-bottom: 1px solid rgba(148,178,255,0.10);
+  background: rgba(255,255,255,0.02);
+}
+.mm-landing__dot { width: 9px; height: 9px; border-radius: 50%; background: rgba(148,178,255,0.20); }
+.mm-landing__panel-title {
+  margin-inline-start: var(--mm-space-3);
+  font-size: var(--mm-text-xs); color: var(--mm-text-tertiary);
+  text-transform: uppercase; letter-spacing: var(--mm-tracking-caps);
+}
+.mm-landing__panel-body { padding: var(--mm-space-3) var(--mm-space-4) var(--mm-space-4); }
+.mm-landing__row {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--mm-space-4);
+  padding: var(--mm-space-3) 0; border-bottom: 1px solid rgba(148,178,255,0.07);
+}
+.mm-landing__row:last-of-type { border-bottom: 0; }
+.mm-landing__row-name { font-size: var(--mm-text-md); color: #C6D4EC; }
+.mm-landing__chip {
+  font-size: var(--mm-text-xs); padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+  border: 1px solid transparent;
+}
+.mm-landing__chip--ok   { background: rgba(34,197,94,0.12); color: #6EE7A8; border-color: rgba(34,197,94,0.22); }
+.mm-landing__chip--warn { background: rgba(245,158,11,0.12); color: #FBBF60; border-color: rgba(245,158,11,0.22); }
+.mm-landing__chip--idle { background: rgba(148,178,255,0.10); color: #8FA6CC; border-color: rgba(148,178,255,0.18); }
+.mm-landing__panel-foot {
+  display: flex; justify-content: space-between; margin-top: var(--mm-space-4);
+  padding-top: var(--mm-space-3); border-top: 1px solid rgba(148,178,255,0.10);
+  font-size: var(--mm-text-xs); color: var(--mm-text-tertiary);
+}
+
+/* ---- Sections ------------------------------------------------------------ */
+.mm-landing__section { padding-block: var(--mm-space-9); }
+/* A measure in ch here resolves against the 14px body size, not the 44px
+   heading inside it — 40ch came out around 280px and broke every section
+   title onto three lines. rem is the right unit when the box and its text
+   are at different scales. */
+.mm-landing__head { margin-bottom: var(--mm-space-7); max-width: 34rem; }
+.mm-landing__kicker {
+  font-size: var(--mm-text-2xs); text-transform: uppercase;
+  letter-spacing: var(--mm-tracking-caps); color: #6E86B8; margin-bottom: var(--mm-space-3);
+}
+.mm-landing__h2 {
+  font-family: var(--mm-font-display);
+  font-size: clamp(1.75rem, 1rem + 2.3vw, 2.75rem);
+  font-weight: var(--mm-weight-bold); letter-spacing: -0.03em; line-height: 1.1;
+  text-wrap: balance;
+}
+
+/* ---- Flow ---------------------------------------------------------------- */
+.mm-landing__flow {
+  display: grid; gap: var(--mm-space-5);
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  list-style: none; padding: 0;
+}
+.mm-landing__step {
+  padding: var(--mm-space-5); border-radius: 14px;
+  border: 1px solid rgba(148,178,255,0.12);
+  background: linear-gradient(170deg, rgba(255,255,255,0.028), rgba(255,255,255,0.008));
+  transition: border-color var(--mm-dur-fast) var(--mm-ease-out),
+              transform var(--mm-dur-fast) var(--mm-ease-out);
+}
+.mm-landing__step:hover { border-color: rgba(122,164,255,0.30); transform: translateY(-2px); }
+.mm-landing__step-n {
+  font-family: var(--mm-font-mono); font-size: var(--mm-text-xs);
+  color: #6FE7F5; letter-spacing: 0.08em;
+}
+.mm-landing__step-k {
+  font-family: var(--mm-font-display); font-size: var(--mm-text-xl);
+  font-weight: var(--mm-weight-semibold); margin-top: var(--mm-space-3);
+  letter-spacing: -0.015em;
+}
+.mm-landing__step-d {
+  font-size: var(--mm-text-sm); color: #8FA6CC;
+  margin-top: var(--mm-space-2); line-height: 1.55;
+}
+
+/* ---- Pillars ------------------------------------------------------------- */
+.mm-landing__pillars {
+  display: grid; gap: var(--mm-space-5);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+.mm-landing__pillar {
+  padding: var(--mm-space-6); border-radius: 16px;
+  border: 1px solid rgba(148,178,255,0.12);
+  background: linear-gradient(170deg, rgba(255,255,255,0.03), rgba(255,255,255,0.008));
+  transition: border-color var(--mm-dur-fast) var(--mm-ease-out);
+}
+.mm-landing__pillar:hover { border-color: rgba(122,164,255,0.28); }
+.mm-landing__pillar-icon {
+  width: 40px; height: 40px; border-radius: 11px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(47,107,255,0.16); color: #8FB4FF;
+  border: 1px solid rgba(122,164,255,0.20);
+}
+.mm-landing__pillar-title {
+  font-family: var(--mm-font-display); font-size: var(--mm-text-lg);
+  font-weight: var(--mm-weight-semibold); margin-top: var(--mm-space-4);
+  letter-spacing: -0.012em;
+}
+.mm-landing__pillar-body {
+  font-size: var(--mm-text-sm); color: #8FA6CC;
+  margin-top: var(--mm-space-3); line-height: 1.62;
+}
+
+/* ---- Roles --------------------------------------------------------------- */
+.mm-landing__roles {
+  display: grid; gap: 1px; background: rgba(148,178,255,0.10);
+  border: 1px solid rgba(148,178,255,0.10); border-radius: 14px; overflow: hidden;
+}
+.mm-landing__role {
+  display: grid; gap: var(--mm-space-1); padding: var(--mm-space-4) var(--mm-space-5);
+  background: #080D1A;
+}
+@media (min-width: 720px) {
+  .mm-landing__role { grid-template-columns: 220px 1fr; gap: var(--mm-space-5); align-items: baseline; }
+}
+.mm-landing__role-name { font-weight: var(--mm-weight-semibold); font-size: var(--mm-text-md); }
+.mm-landing__role-what { font-size: var(--mm-text-sm); color: #8FA6CC; }
+
+/* ---- Close and footer ---------------------------------------------------- */
+.mm-landing__close {
+  padding-block: var(--mm-space-9);
+  text-align: center;
+  display: flex; flex-direction: column; align-items: center;
+}
+.mm-landing__close .mm-landing__lede { margin-inline: auto; }
+.mm-landing__close .mm-landing__cta { justify-content: center; }
+.mm-landing__foot {
+  display: flex; flex-wrap: wrap; gap: var(--mm-space-4);
+  justify-content: space-between; align-items: center;
+  padding-block: var(--mm-space-6);
+  border-top: 1px solid rgba(148,178,255,0.10);
+  font-size: var(--mm-text-sm); color: var(--mm-text-tertiary);
+}
+.mm-landing__foot-links { display: flex; gap: var(--mm-space-5); }
+.mm-landing__foot-links a { color: var(--mm-text-secondary); text-decoration: none; }
+.mm-landing__foot-links a:hover { color: var(--mm-text-primary); }

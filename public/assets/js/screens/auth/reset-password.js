@@ -77,8 +77,10 @@ export default async function resetPasswordScreen({ query }) {
     },
   },
     errorHost,
-    field({ label: 'New password', id: 'mm-password', input: password, required: true }),
-    passwordMeter(password),
+    field({
+      label: 'New password', id: 'mm-password', input: password, required: true,
+      below: passwordMeter(password),
+    }),
     field({ label: 'Confirm new password', id: 'mm-confirm', input: confirm, required: true }),
     submit,
     el('p.mm-auth__foot', el('a.mm-link', { href: '/login', text: 'Back to sign in' })));

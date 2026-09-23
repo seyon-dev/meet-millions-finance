@@ -287,9 +287,23 @@ There is no default account and no default password.
 2. Restart the application.
 3. Visit `https://your-domain/ready` in a browser. It answers with JSON saying
    what it set up.
-4. Sign in at `https://your-domain/`. You will be asked to change the password
-   immediately.
+4. Sign in at `https://your-domain/login`. You will be asked to change the
+   password immediately. (`/` is the public landing page; the **Sign in**
+   button on it goes to the same place.)
 5. **Delete those two environment variables** and restart.
+
+### Demonstration data, if you want screens with something on them
+
+`npm run seed` creates an invented practice — five client companies, a month
+of documents, computed GST and TDS, an invoice paid and one not — so the
+screens have something to show. It never drops or deletes anything, and
+running it twice writes nothing the second time.
+
+Set `DEMO_PASSWORD` to a password of your own first. Without it the seed
+refuses to run against a production database, because the fallback password is
+committed to this repository and the demonstration set includes a Super Admin
+who can see every organisation. See [demo-accounts.md](demo-accounts.md) for
+the full list and how to shut them out again.
 
 ---
 
@@ -315,7 +329,8 @@ Visit each of these:
 | --- | --- |
 | `https://your-domain/health` | `{"ok":true,...}` — the app is running |
 | `https://your-domain/ready` | JSON describing the setup |
-| `https://your-domain/` | The sign-in screen |
+| `https://your-domain/` | The landing page |
+| `https://your-domain/login` | The sign-in screen |
 
 Then sign in and:
 
