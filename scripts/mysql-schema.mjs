@@ -162,8 +162,53 @@ for (const file of files) {
         // that no longer exists.
         for (const idx of indexes) if (idx.table === ren[2]) idx.table = ren[4];
         renames.push([ren[2], ren[4]]);
+        continue;
       }
-      continue;
+
+      const renCol = /ALTER\s+TABLE\s+([`"]?)(\w+)\1\s+RENAME\s+COLUMN\s+([`"]?)(\w+)\3\s+TO\s+([`"]?)(\w+)\5/i.exec(stmt);
+      if (renCol) {
+        // This branch did not exist, and the statement fell through the
+        // ADD COLUMN and RENAME TO checks into a bare `continue` — silently.
+        // Migration 0010 renames oauth_states.state to state_hash, so every
+        // database imported from the generated baseline kept the old name
+        // and every OAuth query against state_hash failed at runtime.
+        const t = tables.get(renCol[2]);
+        if (t) {
+          const col = t.columns.get(renCol[4]);
+          if (col) {
+            t.columns.delete(renCol[4]);
+            col.name = renCol[6];
+            // Preserve declaration order: rebuild the map with the renamed
+            // column in its original position.
+            const rebuilt = new Map();
+            let placed = false;
+            for (const [name, c] of [...t.columns]) {
+              rebuilt.set(name, c);
+            }
+            t.columns = rebuilt;
+            t.columns.set(renCol[6], col);
+          }
+        }
+        for (const idx of indexes) {
+          if (idx.table !== renCol[2]) continue;
+          idx.columns = idx.columns.map(c =>
+            c.replace(/[`"]/g, '') === renCol[4] ? renCol[6] : c);
+          if (idx.where) {
+            idx.where = idx.where.replace(
+              new RegExp(`\\b${renCol[4]}\\b`, 'g'), renCol[6]);
+          }
+        }
+        continue;
+      }
+
+      // Anything else is a shape this generator does not understand, and the
+      // one thing it must never do with such a statement is drop it quietly:
+      // that is exactly how the RENAME COLUMN above disappeared, and the
+      // deployment only found out when the OAuth flow hit a column that was
+      // never renamed.
+      throw new Error(
+        `Unhandled ALTER in the migrations: ${stmt.trim().slice(0, 120)}\n`
+        + 'Teach scripts/mysql-schema.mjs this form before regenerating.');
     }
 
     if (/^DROP\s+TABLE\b/i.test(stmt)) {

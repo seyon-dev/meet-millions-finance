@@ -157,7 +157,16 @@ ALTER TABLE `white_label_settings` MODIFY COLUMN `ssl_status` VARCHAR(255) NOT N
 
 
 -- 2. Replace the sentinel indexes with plain unique indexes -----------------
+-- The replacements are created BEFORE the sentinels are dropped, so a failure
+-- anywhere in this section never leaves a table without uniqueness
+-- enforcement: at worst both indexes exist, and the re-run skips the ones
+-- already in place.
 
+CREATE UNIQUE INDEX `idx_payments_idempotency` ON `payments` (`idempotency_key`);
+CREATE UNIQUE INDEX `idx_webhookevents_dedupe` ON `webhook_events` (`source`, `event_id`);
+CREATE UNIQUE INDEX `idx_leads_external` ON `leads` (`tenant_id`, `source`, `external_id`);
+CREATE UNIQUE INDEX `idx_calls_provider` ON `call_records` (`provider`, `provider_call_id`);
+CREATE UNIQUE INDEX `idx_autojobs_dedupe` ON `automation_jobs` (`rule_id`, `dedupe_key`);
 DROP INDEX `payments_uq_idempotency_key_k` ON `payments`;
 DROP INDEX `webhook_events_uq_event_id_k_source` ON `webhook_events`;
 DROP INDEX `leads_uq_external_id_k_tenant_id_source` ON `leads`;
@@ -168,8 +177,3 @@ ALTER TABLE `webhook_events` DROP COLUMN `event_id_k`;
 ALTER TABLE `leads` DROP COLUMN `external_id_k`;
 ALTER TABLE `call_records` DROP COLUMN `provider_call_id_k`;
 ALTER TABLE `automation_jobs` DROP COLUMN `dedupe_key_k`;
-CREATE UNIQUE INDEX `idx_payments_idempotency` ON `payments` (`idempotency_key`);
-CREATE UNIQUE INDEX `idx_webhookevents_dedupe` ON `webhook_events` (`source`, `event_id`);
-CREATE UNIQUE INDEX `idx_leads_external` ON `leads` (`tenant_id`, `source`, `external_id`);
-CREATE UNIQUE INDEX `idx_calls_provider` ON `call_records` (`provider`, `provider_call_id`);
-CREATE UNIQUE INDEX `idx_autojobs_dedupe` ON `automation_jobs` (`rule_id`, `dedupe_key`);

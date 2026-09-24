@@ -187,7 +187,11 @@ describe('Migration planning', () => {
   });
 
   // D — partial import
-  test('D: a partially imported database is refused', () => {
+  test('D: a partially imported database resumes the baseline', () => {
+    // A clean subset — tables missing, everything present matching, nothing
+    // extra — is our own import that died partway. It used to refuse, which
+    // left a crashed import with no way forward but hand surgery; it resumes
+    // now, because statement-level tolerances make re-applying safe.
     const verification = compareSchema(EXPECTED, schemaOf([
       ['clients', ['id', 'tenant_id', 'display_name'], ['idx_clients_tenant']],
       // documents never made it
@@ -196,18 +200,20 @@ describe('Migration planning', () => {
     assert.deepEqual(verification.missingTables, ['documents']);
 
     const p = plan({ tableCount: 1, verification });
-    assert.equal(p.action, 'refuse');
-    assert.equal(p.reason, 'schema_does_not_match_baseline');
-    assert.equal(p.safe, false);
+    assert.equal(p.action, 'resume_baseline');
+    assert.equal(p.applyBaseline, true);
+    assert.equal(p.safe, true);
   });
 
-  // E — missing table
-  test('E: a missing table is named, and blocks adoption', () => {
+  // E — genuine divergence
+  test('E: a table with the wrong columns is named, and blocks adoption', () => {
+    // Divergence in what EXISTS is a different database, never resumed over.
     const verification = compareSchema(EXPECTED, schemaOf([
-      ['clients', ['id', 'tenant_id', 'display_name'], ['idx_clients_tenant']],
+      ['clients', ['id', 'display_name'], ['idx_clients_tenant']],   // tenant_id missing
+      ['documents', ['id', 'tenant_id', 'client_id'], ['idx_docs_tenant']],
     ]));
-    assert.deepEqual(verification.missingTables, ['documents']);
-    assert.match(describeDifferences(verification), /documents/);
+    assert.ok(verification.missingColumns.includes('clients.tenant_id'));
+    assert.match(describeDifferences(verification), /tenant_id/);
     assert.equal(plan({ tableCount: 100, verification }).action, 'refuse');
   });
 
@@ -412,6 +418,50 @@ describe('Migration planning', () => {
 
     assert.deepEqual(listed, onDisk,
       'if these drift, a migration is either skipped or wrongly reported as pending');
+  });
+
+  test('a baseline import that died partway resumes instead of refusing', () => {
+    // DDL is not transactional: a crash at table 60 of 116 leaves a strict
+    // subset. That is OUR schema, unfinished — the plan applies the baseline
+    // again (statement-level tolerances skip what exists) and records it.
+    const plan = planMigration({
+      applied: new Set(),
+      tableCount: 60,
+      covered: ['0001_a.sql'],
+      sourceMigrations: ['0001_a.sql'],
+      incrementals: ['0013_x.sql'],
+      baselineName: 'mysql-schema.sql',
+      verification: {
+        matches: false,
+        missingTables: ['leads', 'calls'], missingColumns: [], missingIndexes: ['users.idx_x'],
+        extraTables: [],
+      },
+    });
+    assert.equal(plan.action, 'resume_baseline');
+    assert.equal(plan.applyBaseline, true);
+    assert.deepEqual(plan.pending, ['0013_x.sql']);
+  });
+
+  test('a column that differs still refuses — that is a different database', () => {
+    const plan = planMigration({
+      applied: new Set(), tableCount: 60,
+      covered: ['0001_a.sql'], sourceMigrations: ['0001_a.sql'], incrementals: [],
+      baselineName: 'mysql-schema.sql',
+      verification: { matches: false, missingTables: ['leads'],
+        missingColumns: ['users.email'], missingIndexes: [], extraTables: [] },
+    });
+    assert.equal(plan.action, 'refuse');
+  });
+
+  test('an extra table still refuses — nothing of ours is quietly adopted around it', () => {
+    const plan = planMigration({
+      applied: new Set(), tableCount: 60,
+      covered: ['0001_a.sql'], sourceMigrations: ['0001_a.sql'], incrementals: [],
+      baselineName: 'mysql-schema.sql',
+      verification: { matches: false, missingTables: ['leads'],
+        missingColumns: [], missingIndexes: [], extraTables: ['wp_posts'] },
+    });
+    assert.equal(plan.action, 'refuse');
   });
 
   test('every incremental file has a source migration behind it', () => {

@@ -136,3 +136,30 @@ describe('partial unique indexes keep their meaning', () => {
     }
   });
 });
+
+describe('ALTER statements survive the translation', () => {
+  /**
+   * Migration 0010 renames oauth_states.state to state_hash. The generator
+   * recognised ADD COLUMN and RENAME TO (table) and silently dropped every
+   * other ALTER — so the baseline kept the old column name and every OAuth
+   * query, which reads state_hash, failed with "Unknown column". The
+   * generator now throws on an ALTER it does not understand; this pins the
+   * outcome for the one that already burned us.
+   */
+  test('the oauth_states rename is reflected in the baseline', () => {
+    const body = /CREATE TABLE oauth_states \(([\s\S]*?)\) ENGINE/.exec(generated);
+    assert.ok(body, 'oauth_states missing');
+    assert.match(body[1], /\bstate_hash\b/, 'the renamed column is present');
+    assert.doesNotMatch(body[1], /\bstate\s+(TEXT|VARCHAR)/, 'the old name is gone');
+  });
+
+  test('every column the runtime queries by name exists in the baseline', () => {
+    // The two the drift actually hit; cheap to keep as canaries.
+    for (const [table, col] of [['oauth_states', 'state_hash'], ['user_permissions', 'reason'],
+                                 ['chat_threads', 'bot_flow_id']]) {
+      const body = new RegExp(`CREATE TABLE ${table} \\(([\\s\\S]*?)\\) ENGINE`).exec(generated);
+      assert.ok(body, `${table} missing`);
+      assert.match(body[1], new RegExp(`\\b${col}\\b`), `${table}.${col} missing from the baseline`);
+    }
+  });
+});

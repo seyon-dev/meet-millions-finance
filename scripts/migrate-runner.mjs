@@ -31,6 +31,100 @@ const sqlFiles = (dir) => (existsSync(dir)
 
 
 /**
+ * Split a migration file into statements.
+ *
+ * Semicolons inside string literals, backticks and -- comments do not split.
+ * The files here are plain DDL, but the splitter does not get to assume that.
+ */
+export function splitSqlStatements(sql) {
+  const out = [];
+  let buf = '';
+  let i = 0;
+  while (i < sql.length) {
+    const ch = sql[i];
+    if (ch === '-' && sql[i + 1] === '-') {
+      const end = sql.indexOf('\n', i);
+      i = end === -1 ? sql.length : end + 1;
+      continue;
+    }
+    if (ch === "'" || ch === '`' || ch === '"') {
+      let j = i + 1;
+      while (j < sql.length) {
+        if (sql[j] === ch) { if (sql[j + 1] === ch) { j += 2; continue; } break; }
+        j += 1;
+      }
+      buf += sql.slice(i, j + 1);
+      i = j + 1;
+      continue;
+    }
+    if (ch === ';') {
+      if (buf.trim()) out.push(buf.trim());
+      buf = '';
+      i += 1;
+      continue;
+    }
+    buf += ch;
+    i += 1;
+  }
+  if (buf.trim()) out.push(buf.trim());
+  return out;
+}
+
+/**
+ * Is this failure the statement telling us it already ran?
+ *
+ * MySQL has no transactional DDL, so a file that dies halfway leaves what it
+ * already did — and before this, re-running it meant the first statement
+ * failed on its own earlier success and the database was stuck between two
+ * recorded states with no way forward. These three errors, for these
+ * statement shapes, mean exactly "done already":
+ *
+ *   1060  duplicate column      ← ADD COLUMN ran
+ *   1061  duplicate key name    ← CREATE INDEX ran
+ *   1091  can't DROP, missing   ← DROP INDEX / DROP COLUMN ran
+ *
+ * Anything else stays fatal. A tolerated statement is logged, never silent.
+ */
+export function statementAlreadyApplied(err, stmt) {
+  const code = Number(err?.errno ?? 0);
+  const s = String(stmt).toUpperCase();
+  if (code === 1060 && s.includes('ADD')) return true;
+  if (code === 1061 && s.includes('INDEX')) return true;
+  if (code === 1091 && s.includes('DROP')) return true;
+  if (code === 1050 && s.startsWith('CREATE TABLE')) return true;   // table exists
+  return false;
+}
+
+/** Apply one incremental file, statement by statement, resumably. */
+async function applyIncremental(conn, database, file, sql, log) {
+  for (const stmt of splitSqlStatements(sql)) {
+    try {
+      await conn.query(stmt);
+    } catch (err) {
+      if (statementAlreadyApplied(err, stmt)) {
+        log(`  ${file}: already applied, skipping — ${stmt.slice(0, 70)}`);
+        continue;
+      }
+      // RENAME COLUMN re-run: the source column is gone because the rename
+      // already happened. Only treated as done when the target really exists
+      // and the source really does not — a typo on a first run still fails.
+      const ren = /ALTER\s+TABLE\s+`?(\w+)`?\s+RENAME\s+COLUMN\s+`?(\w+)`?\s+TO\s+`?(\w+)`?/i.exec(stmt);
+      if (ren && Number(err?.errno ?? 0) === 1054) {
+        const [cols] = await conn.query(
+          `SELECT LOWER(column_name) AS c FROM information_schema.columns
+            WHERE table_schema = ? AND table_name = ?`, [database, ren[1]]);
+        const names = new Set(cols.map(r => r.c));
+        if (names.has(ren[3].toLowerCase()) && !names.has(ren[2].toLowerCase())) {
+          log(`  ${file}: already applied, skipping — ${stmt.slice(0, 70)}`);
+          continue;
+        }
+      }
+      throw new Error(`${file} failed at: ${stmt.slice(0, 100)}\n  ${err.message}`);
+    }
+  }
+}
+
+/**
  * What the un-applied incremental migrations are about to add.
  *
  * The baseline moves forward when a migration is added, and a database
@@ -58,6 +152,12 @@ export function pendingChanges(files) {
     for (const m of sql.matchAll(
       /ALTER\s+TABLE\s+`?(\w+)`?\s+ADD\s+(?:COLUMN\s+)?`?(\w+)`?/gi)) {
       columns.add(`${m[1].toLowerCase()}.${m[2].toLowerCase()}`);
+    }
+    // A rename means the baseline expects the new name while an older import
+    // still carries the old one — the new name is what this migration adds.
+    for (const m of sql.matchAll(
+      /ALTER\s+TABLE\s+`?(\w+)`?\s+RENAME\s+COLUMN\s+`?(\w+)`?\s+TO\s+`?(\w+)`?/gi)) {
+      columns.add(`${m[1].toLowerCase()}.${m[3].toLowerCase()}`);
     }
   }
 
@@ -195,6 +295,50 @@ export async function runMigration({ dryRun = false, log = () => {} } = {}) {
       };
     }
 
+    if (plan.action === 'resume_baseline') {
+      if (dryRun) {
+        return {
+          ok: true, applied, plan,
+          message: `Would resume the incomplete baseline import `
+            + `(${plan.verification.missingTables.length} of 116 tables still to create). Nothing was changed.`,
+        };
+      }
+      log(`Resuming an incomplete import of ${BASELINE_NAME} — `
+        + `${plan.verification.missingTables.length} table(s) still to create.`);
+      await applyIncremental(conn, config.database, BASELINE_NAME, baselineSql, log);
+      for (const name of plan.record) {
+        await conn.query(
+          'INSERT IGNORE INTO schema_migrations (name, applied_at) VALUES (?, NOW())', [name]);
+        applied.push(name);
+      }
+      for (const file of plan.pending) {
+        log(`Applying ${file}…`);
+        await applyIncremental(conn, config.database, file,
+          readFileSync(join(INCREMENTAL_DIR, file), 'utf8'), log);
+        await conn.query('INSERT INTO schema_migrations (name, applied_at) VALUES (?, NOW())', [file]);
+        applied.push(file);
+      }
+      const [n] = await conn.query(
+        'SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = ?', [config.database]);
+      return {
+        ok: true, applied, plan,
+        message: `Resumed and completed the baseline; ${Math.max(0, Number(n[0]?.n ?? 0) - 1)} tables.`,
+      };
+    }
+
+    if (plan.action === 'adopt' && dryRun) {
+      // --check promises to change nothing. This branch used to sit below
+      // the adopt block, so a check against a hand-imported database wrote
+      // fourteen migration records and applied the pending files — a report
+      // that performed the thing it was reporting on.
+      return {
+        ok: true, applied, plan,
+        message: `Would adopt the existing ${plan.tableCount}-table schema `
+          + `(record ${plan.record.length} migration(s)`
+          + `${plan.pending.length ? `, apply ${plan.pending.join(', ')}` : ''}). Nothing was changed.`,
+      };
+    }
+
     if (plan.action === 'adopt') {
       // No DDL. The schema is already correct and verified; all that is
       // missing is the record saying so.
@@ -211,7 +355,8 @@ export async function runMigration({ dryRun = false, log = () => {} } = {}) {
       // migrations, so those run now rather than waiting for a restart.
       for (const file of plan.pending) {
         log(`Applying ${file}…`);
-        await conn.query(readFileSync(join(INCREMENTAL_DIR, file), 'utf8'));
+        await applyIncremental(conn, config.database, file,
+          readFileSync(join(INCREMENTAL_DIR, file), 'utf8'), log);
         await conn.query('INSERT INTO schema_migrations (name, applied_at) VALUES (?, NOW())', [file]);
         applied.push(file);
       }
@@ -238,7 +383,12 @@ export async function runMigration({ dryRun = false, log = () => {} } = {}) {
 
     if (plan.applyBaseline) {
       log(`Applying ${BASELINE_NAME} to ${config.database}@${config.host}…`);
-      await conn.query(baselineSql);
+      // Statement by statement, with the already-applied tolerances, for the
+      // same reason the incrementals run that way: DDL is not transactional,
+      // and a baseline that dies at table 60 of 116 must be re-runnable
+      // rather than leaving a database that neither matches the baseline nor
+      // can receive it again.
+      await applyIncremental(conn, config.database, BASELINE_NAME, baselineSql, log);
       for (const name of plan.record) {
         await conn.query(
           'INSERT IGNORE INTO schema_migrations (name, applied_at) VALUES (?, NOW())', [name]);
@@ -248,7 +398,8 @@ export async function runMigration({ dryRun = false, log = () => {} } = {}) {
 
     for (const file of plan.pending) {
       log(`Applying ${file}…`);
-      await conn.query(readFileSync(join(INCREMENTAL_DIR, file), 'utf8'));
+      await applyIncremental(conn, config.database, file,
+        readFileSync(join(INCREMENTAL_DIR, file), 'utf8'), log);
       await conn.query('INSERT INTO schema_migrations (name, applied_at) VALUES (?, NOW())', [file]);
       applied.push(file);
     }

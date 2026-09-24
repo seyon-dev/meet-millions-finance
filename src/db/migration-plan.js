@@ -86,6 +86,30 @@ export function planMigration({
     }
 
     if (!verification.matches) {
+      // One mismatched shape is safe to move forward: a baseline import that
+      // died partway. DDL is not transactional, so a crash at table 60 of 116
+      // leaves a strict subset — tables missing, but every table that IS
+      // there matching the baseline exactly, and nothing extra. Re-applying
+      // the baseline statement by statement skips what exists and creates
+      // the rest. Anything with a column that differs or a table the
+      // baseline never made still refuses: that is a different database,
+      // not an unfinished one of ours.
+      const subsetOfBaseline = verification.missingTables.length > 0
+        && verification.missingColumns.length === 0
+        && verification.extraTables.length === 0;
+      if (subsetOfBaseline) {
+        return {
+          action: 'resume_baseline',
+          reason: 'baseline_import_incomplete',
+          tableCount,
+          verification,
+          applyBaseline: true,
+          record: [baselineName, ...covered],
+          pending: incrementals.filter(f => !applied.has(f)),
+          safe: true,
+        };
+      }
+
       return {
         action: 'refuse',
         reason: 'schema_does_not_match_baseline',

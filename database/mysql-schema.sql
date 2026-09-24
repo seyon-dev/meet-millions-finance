@@ -1559,13 +1559,13 @@ CREATE TABLE oauth_connections (
 
 -- -------------------------------------------------------------------------
 CREATE TABLE oauth_states (
-  state VARCHAR(64) PRIMARY KEY,
   tenant_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
   provider TEXT NOT NULL,
   redirect_path TEXT,
   created_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL
+  expires_at TEXT NOT NULL,
+  state_hash VARCHAR(64) PRIMARY KEY
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -------------------------------------------------------------------------
