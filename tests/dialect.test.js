@@ -105,3 +105,25 @@ describe('SCHEMA_RESERVED tracks the schema', () => {
     }
   });
 });
+
+describe('SQLite constructs MySQL has no equivalent for', () => {
+  test('PRAGMA table_info becomes an information_schema query', () => {
+    const out = toMysql('PRAGMA table_info(branches)');
+    assert.doesNotMatch(out, /PRAGMA/i, 'MySQL has no PRAGMA at all');
+    assert.match(out, /information_schema\.columns/i);
+    assert.match(out, /table_name = 'branches'/);
+  });
+
+  test('it keeps the column alias the caller reads', () => {
+    // Db.columnsOf reads row.name, which is what SQLite's PRAGMA returns.
+    assert.match(toMysql('PRAGMA table_info(users)'), /column_name AS name/i);
+  });
+
+  test('it scopes to the current database, not every schema on the server', () => {
+    assert.match(toMysql('PRAGMA table_info(users)'), /table_schema = DATABASE\(\)/i);
+  });
+
+  test('a backquoted table name works too', () => {
+    assert.match(toMysql('PRAGMA table_info(`users`)'), /table_name = 'users'/);
+  });
+});

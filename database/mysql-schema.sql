@@ -46,17 +46,17 @@ CREATE TABLE tenants (
   state TEXT,
   state_code TEXT,
   pincode TEXT,
-  country TEXT NOT NULL,
+  country VARCHAR(255) NOT NULL DEFAULT 'IN',
   gstin TEXT,
   pan TEXT,
   tan TEXT,
   status VARCHAR(255) NOT NULL DEFAULT 'active'
                       CHECK (status IN ('active','trial','suspended','cancelled')),
-  timezone TEXT NOT NULL,
-  currency TEXT NOT NULL,
+  timezone VARCHAR(255) NOT NULL DEFAULT 'Asia/Kolkata',
+  currency VARCHAR(255) NOT NULL DEFAULT 'INR',
   franchise_id VARCHAR(255),
   is_demo INT NOT NULL DEFAULT 0,
-  onboarding_step TEXT NOT NULL,
+  onboarding_step VARCHAR(255) NOT NULL DEFAULT 'complete',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   deleted_at TEXT
@@ -72,7 +72,7 @@ CREATE TABLE franchises (
   owner_phone TEXT,
   city TEXT,
   state TEXT,
-  status TEXT NOT NULL
+  status VARCHAR(255) NOT NULL DEFAULT 'onboarding'
                         CHECK (status IN ('onboarding','active','suspended','terminated')),
   revenue_share_pct DOUBLE NOT NULL DEFAULT 20.0,
   branding_json TEXT,
@@ -99,7 +99,7 @@ CREATE TABLE branches (
   latitude DOUBLE,
   longitude DOUBLE,
   geofence_m INT NOT NULL DEFAULT 200,
-  status TEXT NOT NULL CHECK (status IN ('active','inactive')),
+  status VARCHAR(255) NOT NULL DEFAULT 'active' CHECK (status IN ('active','inactive')),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (tenant_id, code),
@@ -113,7 +113,7 @@ CREATE TABLE companies (
   branch_id VARCHAR(64),
   name TEXT NOT NULL,
   legal_name TEXT,
-  entity_type TEXT NOT NULL
+  entity_type VARCHAR(255) NOT NULL DEFAULT 'private_limited'
                     CHECK (entity_type IN ('proprietorship','partnership','llp','private_limited','public_limited','trust','society','huf','other')),
   gstin VARCHAR(255),
   pan TEXT,
@@ -127,13 +127,13 @@ CREATE TABLE companies (
   address_line2 TEXT,
   city TEXT,
   state TEXT,
-  state_code TEXT NOT NULL,
+  state_code VARCHAR(255) NOT NULL DEFAULT '33',
   pincode TEXT,
-  country TEXT NOT NULL,
-  financial_year_start TEXT NOT NULL,
-  gst_registration_type TEXT NOT NULL
+  country VARCHAR(255) NOT NULL DEFAULT 'IN',
+  financial_year_start VARCHAR(255) NOT NULL DEFAULT '04-01',
+  gst_registration_type VARCHAR(255) NOT NULL DEFAULT 'regular'
                     CHECK (gst_registration_type IN ('regular','composition','casual','non_resident','sez','unregistered')),
-  gst_filing_frequency TEXT NOT NULL
+  gst_filing_frequency VARCHAR(255) NOT NULL DEFAULT 'monthly'
                     CHECK (gst_filing_frequency IN ('monthly','quarterly')),
   logo_key TEXT,
   status VARCHAR(255) NOT NULL DEFAULT 'active'
@@ -170,9 +170,9 @@ CREATE TABLE users (
   locked_until TEXT,
   last_login_at TEXT,
   last_login_ip TEXT,
-  locale TEXT NOT NULL,
-  timezone TEXT NOT NULL,
-  theme TEXT NOT NULL CHECK (theme IN ('dark','light','system')),
+  locale VARCHAR(255) NOT NULL DEFAULT 'en-IN',
+  timezone VARCHAR(255) NOT NULL DEFAULT 'Asia/Kolkata',
+  theme VARCHAR(255) NOT NULL DEFAULT 'dark' CHECK (theme IN ('dark','light','system')),
   is_demo INT NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -208,7 +208,7 @@ CREATE TABLE permissions (
   action TEXT NOT NULL,
   name TEXT NOT NULL,
   description TEXT,
-  category TEXT NOT NULL
+  category VARCHAR(255) NOT NULL DEFAULT 'general'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -------------------------------------------------------------------------
@@ -250,7 +250,7 @@ CREATE TABLE user_permissions (
 CREATE TABLE user_companies (
   user_id VARCHAR(64) NOT NULL,
   company_id VARCHAR(64) NOT NULL,
-  relationship TEXT NOT NULL
+  relationship VARCHAR(255) NOT NULL DEFAULT 'member'
                   CHECK (relationship IN ('owner','member','assigned','readonly')),
   is_default INT NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
@@ -385,7 +385,7 @@ CREATE TABLE clients (
   primary_contact_phone TEXT,
   assigned_executive_id VARCHAR(64),
   assigned_manager_id VARCHAR(64),
-  onboarding_status TEXT NOT NULL
+  onboarding_status VARCHAR(255) NOT NULL DEFAULT 'pending'
                         CHECK (onboarding_status IN ('pending','profile','documents','active')),
   status VARCHAR(255) NOT NULL DEFAULT 'active'
                         CHECK (status IN ('active','inactive','at_risk','churned','archived')),
@@ -436,7 +436,7 @@ CREATE TABLE document_types (
   category TEXT NOT NULL
                       CHECK (category IN ('gst','sales','purchase','banking','expense','payment','tds','payroll','returns','tax','statutory','other')),
   description TEXT,
-  periodicity TEXT NOT NULL
+  periodicity VARCHAR(255) NOT NULL DEFAULT 'monthly'
                       CHECK (periodicity IN ('monthly','quarterly','yearly','one_time','ad_hoc')),
   is_required INT NOT NULL DEFAULT 1,
   accepts_mime TEXT,
@@ -493,7 +493,7 @@ CREATE TABLE documents (
   version_count INT NOT NULL DEFAULT 1,
   status VARCHAR(255) NOT NULL DEFAULT 'submitted'
                         CHECK (status IN ('draft','submitted','under_review','query_raised','awaiting_client','verified','rejected','approved','archived')),
-  priority TEXT NOT NULL
+  priority VARCHAR(255) NOT NULL DEFAULT 'normal'
                         CHECK (priority IN ('low','normal','high','urgent')),
   assigned_to VARCHAR(64),
   verified_by VARCHAR(64),
@@ -502,12 +502,12 @@ CREATE TABLE documents (
   is_locked INT NOT NULL DEFAULT 0,
   locked_by TEXT,
   locked_at TEXT,
-  source TEXT NOT NULL
+  source VARCHAR(255) NOT NULL DEFAULT 'portal'
                         CHECK (source IN ('portal','mobile','whatsapp','email','drive','dropbox','onedrive','api','zip','gps_visit')),
   from_zip_batch_id TEXT,
-  ocr_status TEXT NOT NULL
+  ocr_status VARCHAR(255) NOT NULL DEFAULT 'none'
                         CHECK (ocr_status IN ('none','queued','processing','done','failed','skipped')),
-  ai_precheck_status TEXT NOT NULL
+  ai_precheck_status VARCHAR(255) NOT NULL DEFAULT 'none'
                         CHECK (ai_precheck_status IN ('none','queued','processing','clean','flagged','failed','skipped')),
   ai_confidence DOUBLE,
   sla_due_at TEXT,
@@ -541,7 +541,7 @@ CREATE TABLE document_versions (
   upload_note TEXT,
   replaces_version_id TEXT,
   is_current INT NOT NULL DEFAULT 1,
-  scan_status TEXT NOT NULL
+  scan_status VARCHAR(255) NOT NULL DEFAULT 'pending'
                     CHECK (scan_status IN ('pending','clean','infected','skipped','failed')),
   created_at TEXT NOT NULL,
   UNIQUE (document_id, version_no),
@@ -556,14 +556,14 @@ CREATE TABLE upload_batches (
   tenant_id VARCHAR(64) NOT NULL,
   client_id VARCHAR(64) NOT NULL,
   filing_period_id VARCHAR(64),
-  kind TEXT NOT NULL CHECK (kind IN ('zip','multi','sync')),
+  kind VARCHAR(255) NOT NULL DEFAULT 'zip' CHECK (kind IN ('zip','multi','sync')),
   archive_name TEXT,
   archive_key TEXT,
   total_entries INT NOT NULL DEFAULT 0,
   extracted_count INT NOT NULL DEFAULT 0,
   skipped_count INT NOT NULL DEFAULT 0,
   failed_count INT NOT NULL DEFAULT 0,
-  status TEXT NOT NULL
+  status VARCHAR(255) NOT NULL DEFAULT 'processing'
                     CHECK (status IN ('processing','completed','partial','failed')),
   report_json TEXT,
   created_by TEXT,
@@ -582,7 +582,7 @@ CREATE TABLE document_comments (
   version_id VARCHAR(64),
   author_id VARCHAR(64),
   body TEXT NOT NULL,
-  visibility TEXT NOT NULL
+  visibility VARCHAR(255) NOT NULL DEFAULT 'shared'
                   CHECK (visibility IN ('shared','internal')),
   anchor_json TEXT,
   created_at VARCHAR(255) NOT NULL,
@@ -626,9 +626,9 @@ CREATE TABLE queries (
   reference_no VARCHAR(255) NOT NULL,
   subject TEXT NOT NULL,
   body TEXT NOT NULL,
-  category TEXT NOT NULL
+  category VARCHAR(255) NOT NULL DEFAULT 'document'
                       CHECK (category IN ('document','data','clarification','missing','mismatch','other')),
-  priority TEXT NOT NULL
+  priority VARCHAR(255) NOT NULL DEFAULT 'normal'
                       CHECK (priority IN ('low','normal','high','urgent')),
   status VARCHAR(255) NOT NULL DEFAULT 'open'
                       CHECK (status IN ('open','awaiting_client','client_responded','under_review','resolved','cancelled')),
@@ -661,10 +661,10 @@ CREATE TABLE query_replies (
   author_id VARCHAR(64),
   author_role TEXT,
   body TEXT NOT NULL,
-  visibility TEXT NOT NULL
+  visibility VARCHAR(255) NOT NULL DEFAULT 'shared'
                     CHECK (visibility IN ('shared','internal')),
   attachments_json TEXT,
-  channel TEXT NOT NULL
+  channel VARCHAR(255) NOT NULL DEFAULT 'portal'
                     CHECK (channel IN ('portal','email','whatsapp','sms','mobile','voice_note')),
   created_at VARCHAR(255) NOT NULL,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
@@ -681,7 +681,7 @@ CREATE TABLE checklist_items (
   document_id VARCHAR(64),
   label TEXT NOT NULL,
   is_required INT NOT NULL DEFAULT 1,
-  status TEXT NOT NULL
+  status VARCHAR(255) NOT NULL DEFAULT 'pending'
                       CHECK (status IN ('pending','submitted','under_review','query_raised','verified','rejected','waived')),
   waived_reason TEXT,
   sort_order INT NOT NULL DEFAULT 100,
@@ -745,14 +745,14 @@ CREATE TABLE tax_computations (
   tds_base_paise INT NOT NULL DEFAULT 0,
   tds_deducted_paise INT NOT NULL DEFAULT 0,
   tds_deposited_paise INT NOT NULL DEFAULT 0,
-  status TEXT NOT NULL
+  status VARCHAR(255) NOT NULL DEFAULT 'draft'
                           CHECK (status IN ('draft','computed','stale','superseded','final')),
   source_document_count INT NOT NULL DEFAULT 0,
   line_count INT NOT NULL DEFAULT 0,
   warnings_json TEXT,
   computed_by VARCHAR(64),
   computed_at TEXT,
-  engine_version TEXT NOT NULL,
+  engine_version VARCHAR(255) NOT NULL DEFAULT '1.0.0',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
@@ -770,7 +770,7 @@ CREATE TABLE gst_records (
   client_id VARCHAR(64) NOT NULL,
   document_id VARCHAR(64),
   direction VARCHAR(255) NOT NULL CHECK (direction IN ('outward','inward')),
-  supply_type TEXT NOT NULL
+  supply_type VARCHAR(255) NOT NULL DEFAULT 'intra'
                         CHECK (supply_type IN ('intra','inter','export','exempt','nil','non_gst','rcm')),
   invoice_no TEXT,
   invoice_date TEXT,
@@ -788,7 +788,7 @@ CREATE TABLE gst_records (
   cess_paise INT NOT NULL DEFAULT 0,
   total_paise INT NOT NULL DEFAULT 0,
   itc_eligible INT NOT NULL DEFAULT 1,
-  source TEXT NOT NULL
+  source VARCHAR(255) NOT NULL DEFAULT 'manual'
                         CHECK (source IN ('manual','ocr','import','api','sheet')),
   ocr_confidence DOUBLE,
   created_at TEXT NOT NULL,
@@ -809,7 +809,7 @@ CREATE TABLE tds_records (
   section_code TEXT NOT NULL,
   deductee_name TEXT,
   deductee_pan TEXT,
-  payee_type TEXT NOT NULL
+  payee_type VARCHAR(255) NOT NULL DEFAULT 'company'
                         CHECK (payee_type IN ('individual','huf','company','firm','other')),
   payment_date TEXT,
   amount_paise INT NOT NULL DEFAULT 0,
@@ -819,7 +819,7 @@ CREATE TABLE tds_records (
   challan_no TEXT,
   deposited_on TEXT,
   lower_deduction_cert TEXT,
-  source TEXT NOT NULL
+  source VARCHAR(255) NOT NULL DEFAULT 'manual'
                         CHECK (source IN ('manual','ocr','import','api','sheet')),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
@@ -899,7 +899,7 @@ CREATE TABLE approvals (
   tenant_id VARCHAR(64) NOT NULL,
   entity_type VARCHAR(255) NOT NULL,
   entity_id VARCHAR(255) NOT NULL,
-  stage TEXT NOT NULL
+  stage VARCHAR(255) NOT NULL DEFAULT 'manager'
                     CHECK (stage IN ('executive','manager','admin','client')),
   status VARCHAR(255) NOT NULL DEFAULT 'pending'
                     CHECK (status IN ('pending','approved','rejected','withdrawn','skipped')),
@@ -927,11 +927,11 @@ CREATE TABLE tasks (
   filing_period_id VARCHAR(64),
   title TEXT NOT NULL,
   description TEXT,
-  type TEXT NOT NULL
+  type VARCHAR(255) NOT NULL DEFAULT 'general'
                     CHECK (type IN ('general','verification','follow_up','call_follow_up','collection','filing','reconciliation','onboarding','support')),
   status VARCHAR(255) NOT NULL DEFAULT 'todo'
                     CHECK (status IN ('todo','in_progress','blocked','review','done','cancelled')),
-  priority TEXT NOT NULL
+  priority VARCHAR(255) NOT NULL DEFAULT 'normal'
                     CHECK (priority IN ('low','normal','high','urgent')),
   assigned_to VARCHAR(64),
   created_by VARCHAR(64),
@@ -964,7 +964,7 @@ CREATE TABLE activities (
   entity_id VARCHAR(255),
   summary TEXT NOT NULL,
   detail_json TEXT,
-  visibility TEXT NOT NULL
+  visibility VARCHAR(255) NOT NULL DEFAULT 'internal'
                   CHECK (visibility IN ('internal','client','public')),
   icon TEXT,
   created_at VARCHAR(255) NOT NULL,
@@ -979,12 +979,12 @@ CREATE TABLE plans (
   tagline TEXT,
   monthly_price_paise INT NOT NULL DEFAULT 0,
   yearly_price_paise INT NOT NULL DEFAULT 0,
-  currency TEXT NOT NULL,
+  currency VARCHAR(255) NOT NULL DEFAULT 'INR',
   max_users INT NOT NULL DEFAULT 1,
   max_companies INT NOT NULL DEFAULT 1,
   storage_gb INT NOT NULL DEFAULT 5,
   max_uploads_month INT NOT NULL DEFAULT 50,
-  support_level TEXT NOT NULL
+  support_level VARCHAR(255) NOT NULL DEFAULT 'email'
                         CHECK (support_level IN ('email','email_chat','priority')),
   is_public INT NOT NULL DEFAULT 1,
   is_popular INT NOT NULL DEFAULT 0,
@@ -1013,7 +1013,7 @@ CREATE TABLE subscriptions (
   plan_id VARCHAR(64) NOT NULL,
   status VARCHAR(255) NOT NULL DEFAULT 'active'
                         CHECK (status IN ('trialing','active','past_due','paused','cancelled','expired')),
-  billing_cycle TEXT NOT NULL
+  billing_cycle VARCHAR(255) NOT NULL DEFAULT 'monthly'
                         CHECK (billing_cycle IN ('monthly','yearly')),
   seats INT NOT NULL DEFAULT 1,
   unit_price_paise INT NOT NULL DEFAULT 0,
@@ -1084,7 +1084,7 @@ CREATE TABLE add_on_subscriptions (
   activated_by VARCHAR(64),
   deactivated_at TEXT,
   deactivated_by TEXT,
-  billing_cycle TEXT NOT NULL
+  billing_cycle VARCHAR(255) NOT NULL DEFAULT 'monthly'
                         CHECK (billing_cycle IN ('monthly','yearly')),
   monthly_price_paise INT NOT NULL,
   setup_fee_paise INT NOT NULL DEFAULT 0,
@@ -1123,13 +1123,13 @@ CREATE TABLE invoices (
   subscription_id VARCHAR(64),
   filing_period_id VARCHAR(64),
   invoice_no VARCHAR(255) NOT NULL,
-  direction TEXT NOT NULL
+  direction VARCHAR(255) NOT NULL DEFAULT 'platform_to_tenant'
                         CHECK (direction IN ('platform_to_tenant','tenant_to_client')),
-  kind TEXT NOT NULL
+  kind VARCHAR(255) NOT NULL DEFAULT 'subscription'
                         CHECK (kind IN ('subscription','addon','setup','service','adjustment','credit_note')),
   status VARCHAR(255) NOT NULL DEFAULT 'draft'
                         CHECK (status IN ('draft','issued','sent','partially_paid','paid','overdue','void','refunded')),
-  currency TEXT NOT NULL,
+  currency VARCHAR(255) NOT NULL DEFAULT 'INR',
   subtotal_paise INT NOT NULL DEFAULT 0,
   discount_paise INT NOT NULL DEFAULT 0,
   tax_paise INT NOT NULL DEFAULT 0,
@@ -1195,7 +1195,7 @@ CREATE TABLE payments (
                         CHECK (gateway IN ('razorpay','stripe','cashfree','phonepe','manual','offline')),
   method TEXT CHECK (method IN ('upi','credit_card','debit_card','net_banking','wallet','emi','bank_transfer','cash','cheque',NULL)),
   amount_paise INT NOT NULL,
-  currency TEXT NOT NULL,
+  currency VARCHAR(255) NOT NULL DEFAULT 'INR',
   status VARCHAR(255) NOT NULL DEFAULT 'pending'
                         CHECK (status IN ('created','pending','authorized','success','failed','cancelled','refunded','partially_refunded','disputed')),
   gateway_order_id VARCHAR(255),
@@ -1213,9 +1213,6 @@ CREATE TABLE payments (
   notes_json TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  -- Collapses a pair of SQLite partial unique indexes: MySQL treats
-  -- NULLs as distinct, which would let two platform rows share a key.
-  idempotency_key_k VARCHAR(64) AS (IFNULL(idempotency_key, '~platform')) STORED,
   UNIQUE (tenant_id, reference_no),
   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
   FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE SET NULL,
@@ -1249,18 +1246,15 @@ CREATE TABLE webhook_events (
   source VARCHAR(255) NOT NULL,
   event_id VARCHAR(255),
   event_type TEXT,
-  signature_status TEXT NOT NULL
+  signature_status VARCHAR(255) NOT NULL DEFAULT 'unverified'
                       CHECK (signature_status IN ('unverified','valid','invalid','missing_secret')),
-  status TEXT NOT NULL
+  status VARCHAR(255) NOT NULL DEFAULT 'received'
                       CHECK (status IN ('received','processed','ignored','failed','duplicate')),
   payload_json TEXT NOT NULL,
   headers_json TEXT,
   error_message TEXT,
   processed_at TEXT,
-  received_at VARCHAR(255) NOT NULL,
-  -- Collapses a pair of SQLite partial unique indexes: MySQL treats
-  -- NULLs as distinct, which would let two platform rows share a key.
-  event_id_k VARCHAR(64) AS (IFNULL(event_id, '~platform')) STORED
+  received_at VARCHAR(255) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -------------------------------------------------------------------------
@@ -1272,7 +1266,7 @@ CREATE TABLE franchise_revenue (
   gross_paise INT NOT NULL DEFAULT 0,
   share_pct DOUBLE NOT NULL,
   share_paise INT NOT NULL DEFAULT 0,
-  status TEXT NOT NULL
+  status VARCHAR(255) NOT NULL DEFAULT 'accrued'
                       CHECK (status IN ('accrued','approved','paid','disputed')),
   settled_at TEXT,
   created_at TEXT NOT NULL,
@@ -1330,7 +1324,7 @@ CREATE TABLE notifications (
   trigger_key TEXT NOT NULL,
   title TEXT NOT NULL,
   body TEXT,
-  severity TEXT NOT NULL
+  severity VARCHAR(255) NOT NULL DEFAULT 'info'
                   CHECK (severity IN ('info','success','warning','danger')),
   icon TEXT,
   link_path TEXT,
@@ -1399,14 +1393,14 @@ CREATE TABLE whatsapp_templates (
   tenant_id VARCHAR(64) NOT NULL,
   name VARCHAR(255) NOT NULL,
   language VARCHAR(255) NOT NULL DEFAULT 'en',
-  category TEXT NOT NULL
+  category VARCHAR(255) NOT NULL DEFAULT 'UTILITY'
                         CHECK (category IN ('UTILITY','MARKETING','AUTHENTICATION')),
   header_text TEXT,
   body_text TEXT NOT NULL,
   footer_text TEXT,
   buttons_json TEXT,
   variables_json TEXT,
-  approval_status TEXT NOT NULL
+  approval_status VARCHAR(255) NOT NULL DEFAULT 'draft'
                         CHECK (approval_status IN ('draft','pending','approved','rejected','disabled')),
   provider_template_id TEXT,
   rejection_reason TEXT,
@@ -1441,11 +1435,11 @@ CREATE TABLE voice_notes (
   entity_id VARCHAR(255),
   author_id VARCHAR(64),
   storage_key TEXT NOT NULL,
-  mime_type TEXT NOT NULL,
+  mime_type VARCHAR(255) NOT NULL DEFAULT 'audio/webm',
   duration_seconds INT NOT NULL DEFAULT 0,
   size_bytes INT NOT NULL DEFAULT 0,
   transcript TEXT,
-  transcript_status TEXT NOT NULL
+  transcript_status VARCHAR(255) NOT NULL DEFAULT 'pending'
                       CHECK (transcript_status IN ('pending','processing','done','failed','not_configured','skipped')),
   transcript_lang TEXT,
   transcript_confidence DOUBLE,
@@ -1464,15 +1458,15 @@ CREATE TABLE support_tickets (
   ticket_no VARCHAR(255) NOT NULL,
   subject TEXT NOT NULL,
   description TEXT NOT NULL,
-  category TEXT NOT NULL
+  category VARCHAR(255) NOT NULL DEFAULT 'general'
                       CHECK (category IN ('general','technical','billing','document','filing','account','feature_request','bug','other')),
-  priority TEXT NOT NULL
+  priority VARCHAR(255) NOT NULL DEFAULT 'normal'
                       CHECK (priority IN ('low','normal','high','urgent')),
   status VARCHAR(255) NOT NULL DEFAULT 'open'
                       CHECK (status IN ('open','in_progress','waiting_customer','waiting_internal','resolved','closed','reopened')),
   raised_by VARCHAR(64),
   assigned_to VARCHAR(64),
-  channel TEXT NOT NULL
+  channel VARCHAR(255) NOT NULL DEFAULT 'portal'
                       CHECK (channel IN ('portal','email','whatsapp','phone','chat','api')),
   first_response_at TEXT,
   resolved_at TEXT,
@@ -1500,10 +1494,10 @@ CREATE TABLE ticket_messages (
   ticket_id VARCHAR(64) NOT NULL,
   author_id VARCHAR(64),
   author_name TEXT,
-  author_kind TEXT NOT NULL
+  author_kind VARCHAR(255) NOT NULL DEFAULT 'agent'
                       CHECK (author_kind IN ('agent','client','system')),
   body TEXT NOT NULL,
-  visibility TEXT NOT NULL
+  visibility VARCHAR(255) NOT NULL DEFAULT 'shared'
                       CHECK (visibility IN ('shared','internal')),
   attachments_json TEXT,
   created_at VARCHAR(255) NOT NULL,
@@ -1552,7 +1546,7 @@ CREATE TABLE oauth_connections (
   refresh_token_enc TEXT,
   token_type TEXT,
   expires_at TEXT,
-  status TEXT NOT NULL
+  status VARCHAR(255) NOT NULL DEFAULT 'active'
                       CHECK (status IN ('active','expired','revoked','error')),
   connected_by VARCHAR(64),
   created_at TEXT NOT NULL,
@@ -1602,7 +1596,7 @@ CREATE TABLE field_mappings (
   integration_id VARCHAR(64),
   source_key TEXT NOT NULL,
   source_label TEXT,
-  target_entity TEXT NOT NULL
+  target_entity VARCHAR(255) NOT NULL DEFAULT 'lead'
                       CHECK (target_entity IN ('lead','client','company','contact','document','task')),
   target_field TEXT NOT NULL,
   transform TEXT,
@@ -1623,7 +1617,7 @@ CREATE TABLE campaigns (
                       CHECK (source IN ('meta_ads','google_ads','website','google_form','sheet','referral','manual','other')),
   name TEXT NOT NULL,
   platform TEXT,
-  status TEXT NOT NULL
+  status VARCHAR(255) NOT NULL DEFAULT 'active'
                       CHECK (status IN ('active','paused','completed','archived')),
   spend_paise INT NOT NULL DEFAULT 0,
   lead_count INT NOT NULL DEFAULT 0,
@@ -1669,9 +1663,6 @@ CREATE TABLE leads (
   last_contacted_at TEXT,
   created_at VARCHAR(255) NOT NULL,
   updated_at TEXT NOT NULL,
-  -- Collapses a pair of SQLite partial unique indexes: MySQL treats
-  -- NULLs as distinct, which would let two platform rows share a key.
-  external_id_k VARCHAR(64) AS (IFNULL(external_id, '~platform')) STORED,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
   FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE SET NULL,
   FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL,
@@ -1687,7 +1678,7 @@ CREATE TABLE lead_assignment_rules (
   name TEXT NOT NULL,
   priority INT NOT NULL DEFAULT 100,
   conditions_json TEXT,
-  strategy TEXT NOT NULL
+  strategy VARCHAR(255) NOT NULL DEFAULT 'round_robin'
                     CHECK (strategy IN ('round_robin','least_loaded','specific_user','branch_manager')),
   target_user_id VARCHAR(64),
   pool_json TEXT,
@@ -1705,10 +1696,10 @@ CREATE TABLE webhook_endpoints (
   tenant_id VARCHAR(64) NOT NULL,
   slug TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
-  kind TEXT NOT NULL
+  kind VARCHAR(255) NOT NULL DEFAULT 'website_form'
                     CHECK (kind IN ('website_form','google_form','sheet','custom')),
   secret_hash TEXT,
-  target_entity TEXT NOT NULL,
+  target_entity VARCHAR(255) NOT NULL DEFAULT 'lead',
   is_active INT NOT NULL DEFAULT 1,
   request_count INT NOT NULL DEFAULT 0,
   last_request_at TEXT,
@@ -1725,8 +1716,8 @@ CREATE TABLE ocr_extractions (
   document_id VARCHAR(64) NOT NULL,
   version_id VARCHAR(64),
   profile TEXT NOT NULL,
-  provider TEXT NOT NULL,
-  status TEXT NOT NULL
+  provider VARCHAR(255) NOT NULL DEFAULT 'google_vision',
+  status VARCHAR(255) NOT NULL DEFAULT 'queued'
                       CHECK (status IN ('queued','processing','done','failed','not_configured')),
   overall_confidence DOUBLE,
   fields_json TEXT,
@@ -1752,7 +1743,7 @@ CREATE TABLE ai_verifications (
   tenant_id VARCHAR(64) NOT NULL,
   document_id VARCHAR(64) NOT NULL,
   version_id VARCHAR(64),
-  status TEXT NOT NULL
+  status VARCHAR(255) NOT NULL DEFAULT 'queued'
                       CHECK (status IN ('queued','processing','clean','flagged','failed','not_configured')),
   confidence DOUBLE,
   checks_json TEXT,
@@ -1773,7 +1764,7 @@ CREATE TABLE ai_conversations (
   id VARCHAR(64) PRIMARY KEY,
   tenant_id VARCHAR(64) NOT NULL,
   user_id VARCHAR(64) NOT NULL,
-  kind TEXT NOT NULL
+  kind VARCHAR(255) NOT NULL DEFAULT 'tax_assistant'
                   CHECK (kind IN ('tax_assistant','ask_your_data','call_summary','report_draft')),
   title TEXT,
   context_json TEXT,
@@ -1812,14 +1803,14 @@ CREATE TABLE ai_insights (
                   CHECK (kind IN ('digest','churn_risk','revenue_forecast','workload_forecast','anomaly','opportunity')),
   title TEXT NOT NULL,
   body TEXT NOT NULL,
-  severity TEXT NOT NULL
+  severity VARCHAR(255) NOT NULL DEFAULT 'info'
                   CHECK (severity IN ('info','success','warning','danger')),
   entity_type TEXT,
   entity_id TEXT,
   metrics_json TEXT,
   confidence DOUBLE,
   period_key TEXT,
-  generated_by TEXT NOT NULL
+  generated_by VARCHAR(255) NOT NULL DEFAULT 'rules'
                   CHECK (generated_by IN ('rules','llm')),
   model TEXT,
   acknowledged_by TEXT,
@@ -1838,11 +1829,11 @@ CREATE TABLE esign_requests (
   report_id VARCHAR(64),
   reference_no VARCHAR(255) NOT NULL,
   title TEXT NOT NULL,
-  provider TEXT NOT NULL
+  provider VARCHAR(255) NOT NULL DEFAULT 'digio'
                       CHECK (provider IN ('digio','leegality','other')),
-  method TEXT NOT NULL
+  method VARCHAR(255) NOT NULL DEFAULT 'aadhaar_esign'
                       CHECK (method IN ('aadhaar_esign','dsc','electronic')),
-  status TEXT NOT NULL
+  status VARCHAR(255) NOT NULL DEFAULT 'draft'
                       CHECK (status IN ('draft','sent','partially_signed','signed','declined','expired','failed','not_configured')),
   source_key TEXT,
   signed_key TEXT,
@@ -1870,7 +1861,7 @@ CREATE TABLE esign_signers (
   email TEXT,
   phone TEXT,
   sequence INT NOT NULL DEFAULT 1,
-  status TEXT NOT NULL
+  status VARCHAR(255) NOT NULL DEFAULT 'pending'
                     CHECK (status IN ('pending','sent','viewed','signed','declined','expired')),
   signed_at TEXT,
   declined_reason TEXT,
@@ -1887,13 +1878,13 @@ CREATE TABLE storage_folder_maps (
   tenant_id VARCHAR(64) NOT NULL,
   integration_id VARCHAR(64) NOT NULL,
   provider VARCHAR(255) NOT NULL CHECK (provider IN ('google_drive','dropbox','onedrive')),
-  scope_type TEXT NOT NULL
+  scope_type VARCHAR(255) NOT NULL DEFAULT 'tenant'
                       CHECK (scope_type IN ('tenant','company','client')),
   scope_id TEXT,
   remote_folder_id TEXT,
   remote_path TEXT NOT NULL,
   auto_sync INT NOT NULL DEFAULT 1,
-  sync_on TEXT NOT NULL
+  sync_on VARCHAR(255) NOT NULL DEFAULT 'verified'
                       CHECK (sync_on IN ('upload','verified','approved')),
   preserve_versions INT NOT NULL DEFAULT 1,
   last_sync_at TEXT,
@@ -1931,7 +1922,7 @@ CREATE TABLE calendar_events (
   owner_id VARCHAR(64),
   title TEXT NOT NULL,
   description TEXT,
-  kind TEXT NOT NULL
+  kind VARCHAR(255) NOT NULL DEFAULT 'meeting'
                       CHECK (kind IN ('meeting','due_date','reminder','visit','call','filing_deadline')),
   location TEXT,
   starts_at VARCHAR(255) NOT NULL,
@@ -1939,11 +1930,11 @@ CREATE TABLE calendar_events (
   all_day INT NOT NULL DEFAULT 0,
   attendees_json TEXT,
   reminder_minutes INT NOT NULL DEFAULT 30,
-  status TEXT NOT NULL
+  status VARCHAR(255) NOT NULL DEFAULT 'confirmed'
                       CHECK (status IN ('tentative','confirmed','cancelled')),
   provider TEXT CHECK (provider IN ('google','outlook',NULL)),
   provider_event_id TEXT,
-  sync_status TEXT NOT NULL
+  sync_status VARCHAR(255) NOT NULL DEFAULT 'local'
                       CHECK (sync_status IN ('local','pending','synced','failed','not_configured')),
   source_type TEXT,
   source_id TEXT,
@@ -1998,13 +1989,13 @@ CREATE TABLE api_usage (
 -- -------------------------------------------------------------------------
 CREATE TABLE telephony_settings (
   tenant_id VARCHAR(64) PRIMARY KEY,
-  provider TEXT NOT NULL
+  provider VARCHAR(255) NOT NULL DEFAULT 'exotel'
                           CHECK (provider IN ('exotel','knowlarity','myoperator','twilio','plivo','ringcentral','aircall')),
-  status TEXT NOT NULL
+  status VARCHAR(255) NOT NULL DEFAULT 'not_connected'
                           CHECK (status IN ('not_connected','connected','error','disabled')),
   caller_id TEXT,
   virtual_numbers_json TEXT,
-  recording_mode TEXT NOT NULL
+  recording_mode VARCHAR(255) NOT NULL DEFAULT 'automatic'
                           CHECK (recording_mode IN ('automatic','manual','disabled')),
   recording_retention_days INT NOT NULL DEFAULT 365,
   transcription_enabled INT NOT NULL DEFAULT 0,
@@ -2032,7 +2023,7 @@ CREATE TABLE telephony_agents (
   extension TEXT,
   provider_agent_id TEXT,
   direct_number TEXT,
-  presence TEXT NOT NULL
+  presence VARCHAR(255) NOT NULL DEFAULT 'offline'
                       CHECK (presence IN ('offline','available','busy','on_call','away','dnd')),
   presence_updated_at TEXT,
   is_active INT NOT NULL DEFAULT 1,
@@ -2049,7 +2040,7 @@ CREATE TABLE call_dispositions (
   tenant_id VARCHAR(64) NOT NULL,
   `key` VARCHAR(255) NOT NULL,
   label TEXT NOT NULL,
-  outcome TEXT NOT NULL
+  outcome VARCHAR(255) NOT NULL DEFAULT 'neutral'
                   CHECK (outcome IN ('positive','neutral','negative')),
   requires_follow_up INT NOT NULL DEFAULT 0,
   colour TEXT,
@@ -2121,9 +2112,6 @@ CREATE TABLE call_records (
   quality_rating INT,
   created_at VARCHAR(255) NOT NULL,
   updated_at TEXT NOT NULL,
-  -- Collapses a pair of SQLite partial unique indexes: MySQL treats
-  -- NULLs as distinct, which would let two platform rows share a key.
-  provider_call_id_k VARCHAR(64) AS (IFNULL(provider_call_id, '~platform')) STORED,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
   FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
@@ -2142,7 +2130,7 @@ CREATE TABLE call_recordings (
   call_id VARCHAR(64) NOT NULL,
   storage_key TEXT,
   provider_url TEXT,
-  mime_type TEXT NOT NULL,
+  mime_type VARCHAR(255) NOT NULL DEFAULT 'audio/mpeg',
   size_bytes INT NOT NULL DEFAULT 0,
   duration_seconds INT NOT NULL DEFAULT 0,
   status VARCHAR(255) NOT NULL DEFAULT 'pending'
@@ -2176,8 +2164,8 @@ CREATE TABLE call_transcripts (
   id VARCHAR(64) PRIMARY KEY,
   tenant_id VARCHAR(64) NOT NULL,
   call_id VARCHAR(64) NOT NULL,
-  provider TEXT NOT NULL,
-  status TEXT NOT NULL
+  provider VARCHAR(255) NOT NULL DEFAULT 'google_speech',
+  status VARCHAR(255) NOT NULL DEFAULT 'queued'
                       CHECK (status IN ('queued','processing','done','failed','not_configured')),
   language TEXT,
   full_text TEXT,
@@ -2196,7 +2184,7 @@ CREATE TABLE call_ai_analysis (
   id VARCHAR(64) PRIMARY KEY,
   tenant_id VARCHAR(64) NOT NULL,
   call_id VARCHAR(64) NOT NULL,
-  status TEXT NOT NULL
+  status VARCHAR(255) NOT NULL DEFAULT 'queued'
                       CHECK (status IN ('queued','processing','done','failed','not_configured')),
   summary TEXT,
   key_points_json TEXT,
@@ -2224,7 +2212,7 @@ CREATE TABLE ivr_flows (
   greeting_key TEXT,
   nodes_json TEXT NOT NULL,
   business_hours_json TEXT,
-  after_hours_action TEXT NOT NULL
+  after_hours_action VARCHAR(255) NOT NULL DEFAULT 'voicemail'
                       CHECK (after_hours_action IN ('voicemail','message','forward','hangup')),
   is_active INT NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
@@ -2286,18 +2274,18 @@ CREATE TABLE audit_logs (
   actor_id VARCHAR(255),
   actor_name TEXT,
   actor_role TEXT,
-  actor_type TEXT NOT NULL
+  actor_type VARCHAR(255) NOT NULL DEFAULT 'user'
                     CHECK (actor_type IN ('user','system','api_key','webhook','cron','anonymous')),
   action VARCHAR(255) NOT NULL,
-  category TEXT NOT NULL,
+  category VARCHAR(255) NOT NULL DEFAULT 'general',
   entity_type VARCHAR(255),
   entity_id VARCHAR(255),
   entity_label TEXT,
   old_value_json TEXT,
   new_value_json TEXT,
-  severity TEXT NOT NULL
+  severity VARCHAR(255) NOT NULL DEFAULT 'info'
                     CHECK (severity IN ('debug','info','notice','warning','critical')),
-  result TEXT NOT NULL
+  result VARCHAR(255) NOT NULL DEFAULT 'success'
                     CHECK (result IN ('success','failure','denied')),
   ip TEXT,
   user_agent TEXT,
@@ -2331,13 +2319,13 @@ CREATE TABLE system_logs (
 CREATE TABLE backups (
   id VARCHAR(64) PRIMARY KEY,
   tenant_id VARCHAR(64),
-  kind TEXT NOT NULL
+  kind VARCHAR(255) NOT NULL DEFAULT 'full'
                       CHECK (kind IN ('full','database','documents','settings')),
-  scope TEXT NOT NULL
+  scope VARCHAR(255) NOT NULL DEFAULT 'tenant'
                       CHECK (scope IN ('platform','tenant')),
-  status TEXT NOT NULL
+  status VARCHAR(255) NOT NULL DEFAULT 'queued'
                       CHECK (status IN ('queued','running','completed','failed','expired','restored')),
-  `trigger` TEXT NOT NULL
+  `trigger` VARCHAR(255) NOT NULL DEFAULT 'manual'
                       CHECK (`trigger` IN ('manual','scheduled')),
   storage_key TEXT,
   size_bytes INT NOT NULL DEFAULT 0,
@@ -2360,9 +2348,9 @@ CREATE TABLE restore_jobs (
   id VARCHAR(64) PRIMARY KEY,
   tenant_id VARCHAR(64),
   backup_id VARCHAR(64) NOT NULL,
-  mode TEXT NOT NULL
+  mode VARCHAR(255) NOT NULL DEFAULT 'dry_run'
                   CHECK (mode IN ('dry_run','restore')),
-  status TEXT NOT NULL
+  status VARCHAR(255) NOT NULL DEFAULT 'queued'
                   CHECK (status IN ('queued','running','completed','failed','cancelled')),
   tables_json TEXT,
   report_json TEXT,
@@ -2397,7 +2385,7 @@ CREATE TABLE attendance (
   worked_minutes INT NOT NULL DEFAULT 0,
   travel_km DOUBLE NOT NULL DEFAULT 0,
   visit_count INT NOT NULL DEFAULT 0,
-  status TEXT NOT NULL
+  status VARCHAR(255) NOT NULL DEFAULT 'present'
                       CHECK (status IN ('present','half_day','absent','leave','holiday','remote','pending')),
   notes TEXT,
   created_at TEXT NOT NULL,
@@ -2415,7 +2403,7 @@ CREATE TABLE gps_visits (
   attendance_id VARCHAR(64),
   user_id VARCHAR(64) NOT NULL,
   client_id VARCHAR(64),
-  purpose TEXT NOT NULL
+  purpose VARCHAR(255) NOT NULL DEFAULT 'document_collection'
                       CHECK (purpose IN ('document_collection','meeting','audit','delivery','other')),
   checked_in_at VARCHAR(255) NOT NULL,
   checked_out_at TEXT,
@@ -2447,17 +2435,17 @@ CREATE TABLE white_label_settings (
   app_icon_key TEXT,
   primary_colour TEXT,
   accent_colour TEXT,
-  sidebar_style TEXT NOT NULL
+  sidebar_style VARCHAR(255) NOT NULL DEFAULT 'glass'
                         CHECK (sidebar_style IN ('glass','solid')),
   login_headline TEXT,
   login_subtext TEXT,
   login_image_key TEXT,
   custom_domain TEXT,
-  domain_status TEXT NOT NULL
+  domain_status VARCHAR(255) NOT NULL DEFAULT 'not_configured'
                         CHECK (domain_status IN ('not_configured','pending_dns','verifying','active','failed')),
   domain_verification_token TEXT,
   domain_verified_at TEXT,
-  ssl_status TEXT NOT NULL
+  ssl_status VARCHAR(255) NOT NULL DEFAULT 'none'
                         CHECK (ssl_status IN ('none','pending','active','failed')),
   email_from_name TEXT,
   email_from_address TEXT,
@@ -2478,7 +2466,7 @@ CREATE TABLE settings (
   namespace VARCHAR(255) NOT NULL,
   `key` VARCHAR(255) NOT NULL,
   value_json TEXT NOT NULL,
-  value_type TEXT NOT NULL
+  value_type VARCHAR(255) NOT NULL DEFAULT 'string'
                   CHECK (value_type IN ('string','number','boolean','json')),
   is_secret INT NOT NULL DEFAULT 0,
   description TEXT,
@@ -2532,8 +2520,8 @@ CREATE TABLE scheduled_reports (
   name TEXT NOT NULL,
   report_type TEXT NOT NULL,
   filters_json TEXT,
-  format TEXT NOT NULL CHECK (format IN ('csv','pdf','json')),
-  frequency TEXT NOT NULL
+  format VARCHAR(255) NOT NULL DEFAULT 'csv' CHECK (format IN ('csv','pdf','json')),
+  frequency VARCHAR(255) NOT NULL DEFAULT 'monthly'
                       CHECK (frequency IN ('daily','weekly','monthly','quarterly')),
   day_of_week INT,
   day_of_month INT,
@@ -2593,7 +2581,7 @@ CREATE TABLE offline_captures (
   file_name TEXT,
   size_bytes INT,
   captured_at TEXT NOT NULL,
-  status TEXT NOT NULL
+  status VARCHAR(255) NOT NULL DEFAULT 'pending'
                       CHECK (status IN ('pending','uploading','uploaded','failed','discarded')),
   document_id VARCHAR(64),
   error_message TEXT,
@@ -2630,9 +2618,6 @@ CREATE TABLE automation_jobs (
   dedupe_key VARCHAR(255),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  -- Collapses a pair of SQLite partial unique indexes: MySQL treats
-  -- NULLs as distinct, which would let two platform rows share a key.
-  dedupe_key_k VARCHAR(64) AS (IFNULL(dedupe_key, '~platform')) STORED,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
   FOREIGN KEY (rule_id) REFERENCES automation_rules(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -2717,7 +2702,7 @@ CREATE TABLE chat_messages (
   tenant_id VARCHAR(64) NOT NULL,
   thread_id VARCHAR(64) NOT NULL,
   direction TEXT NOT NULL CHECK (direction IN ('inbound','outbound')),
-  type TEXT NOT NULL
+  type VARCHAR(255) NOT NULL DEFAULT 'text'
                         CHECK (type IN ('text','image','document','audio','video','template','interactive','location','system')),
   body TEXT,
   media_key TEXT,
@@ -2727,7 +2712,7 @@ CREATE TABLE chat_messages (
   sent_by VARCHAR(64),
   is_bot INT NOT NULL DEFAULT 0,
   provider_message_id TEXT,
-  status TEXT NOT NULL
+  status VARCHAR(255) NOT NULL DEFAULT 'queued'
                         CHECK (status IN ('queued','sent','delivered','read','failed','received')),
   error_message TEXT,
   linked_document_id VARCHAR(64),
@@ -2850,12 +2835,12 @@ CREATE INDEX idx_invoiceitems_invoice ON invoice_items (invoice_id, sort_order);
 CREATE INDEX idx_payments_tenant_status ON payments (tenant_id, status);
 CREATE INDEX idx_payments_invoice ON payments (invoice_id);
 CREATE INDEX idx_payments_gateway_order ON payments (gateway_order_id);
--- replaces idx_payments_idempotency and its NULL/NOT NULL counterpart
-CREATE UNIQUE INDEX payments_uq_idempotency_key_k ON payments (idempotency_key_k);
+-- idempotency_key IS NOT NULL needs no predicate here: a MySQL unique index does not collide on NULL
+CREATE UNIQUE INDEX idx_payments_idempotency ON payments (idempotency_key);
 CREATE INDEX idx_paytx_payment ON payment_transactions (payment_id, created_at);
 CREATE INDEX idx_webhookevents_source ON webhook_events (source, received_at);
--- replaces idx_webhookevents_dedupe and its NULL/NOT NULL counterpart
-CREATE UNIQUE INDEX webhook_events_uq_event_id_k_source ON webhook_events (event_id_k, source);
+-- event_id IS NOT NULL needs no predicate here: a MySQL unique index does not collide on NULL
+CREATE UNIQUE INDEX idx_webhookevents_dedupe ON webhook_events (source, event_id);
 -- replaces idx_nt_default and its NULL/NOT NULL counterpart
 CREATE UNIQUE INDEX notification_templates_uq_tenant_id_k_trigger_key_channel ON notification_templates (tenant_id_k, trigger_key, channel);
 CREATE INDEX idx_notifications_user ON notifications (user_id, read_at, created_at);
@@ -2879,8 +2864,8 @@ CREATE INDEX idx_leads_tenant_status ON leads (tenant_id, status, created_at);
 CREATE INDEX idx_leads_assignee ON leads (assigned_to, status);
 CREATE INDEX idx_leads_phone ON leads (tenant_id, phone);
 CREATE INDEX idx_leads_email ON leads (tenant_id, email);
--- replaces idx_leads_external and its NULL/NOT NULL counterpart
-CREATE UNIQUE INDEX leads_uq_external_id_k_tenant_id_source ON leads (external_id_k, tenant_id, source);
+-- external_id IS NOT NULL needs no predicate here: a MySQL unique index does not collide on NULL
+CREATE UNIQUE INDEX idx_leads_external ON leads (tenant_id, source, external_id);
 CREATE INDEX idx_webhookendpoints_tenant ON webhook_endpoints (tenant_id);
 CREATE INDEX idx_ocr_document ON ocr_extractions (document_id);
 CREATE INDEX idx_ocr_tenant_review ON ocr_extractions (tenant_id, review_status);
@@ -2901,8 +2886,8 @@ CREATE INDEX idx_calls_client ON call_records (client_id, created_at);
 CREATE INDEX idx_calls_agent ON call_records (agent_id, created_at);
 CREATE INDEX idx_calls_status ON call_records (tenant_id, status);
 CREATE INDEX idx_calls_direction ON call_records (tenant_id, direction, created_at);
--- replaces idx_calls_provider and its NULL/NOT NULL counterpart
-CREATE UNIQUE INDEX call_records_uq_provider_call_id_k_provider ON call_records (provider_call_id_k, provider);
+-- provider_call_id IS NOT NULL needs no predicate here: a MySQL unique index does not collide on NULL
+CREATE UNIQUE INDEX idx_calls_provider ON call_records (provider, provider_call_id);
 CREATE INDEX idx_recordings_call ON call_recordings (call_id);
 CREATE INDEX idx_recordings_tenant ON call_recordings (tenant_id, status);
 CREATE INDEX idx_callnotes_call ON call_notes (call_id, created_at);
@@ -2934,8 +2919,8 @@ CREATE INDEX idx_user_permissions_expiry ON user_permissions (expires_at);
 CREATE INDEX idx_chatthreads_bot ON chat_threads (tenant_id, bot_flow_id);
 CREATE INDEX idx_autojobs_due ON automation_jobs (status, run_after);
 CREATE INDEX idx_autojobs_tenant ON automation_jobs (tenant_id, rule_id);
--- replaces idx_autojobs_dedupe and its NULL/NOT NULL counterpart
-CREATE UNIQUE INDEX automation_jobs_uq_dedupe_key_k_rule_id ON automation_jobs (dedupe_key_k, rule_id);
+-- dedupe_key IS NOT NULL AND status IN ('pending','running') needs no predicate here: a MySQL unique index does not collide on NULL
+CREATE UNIQUE INDEX idx_autojobs_dedupe ON automation_jobs (rule_id, dedupe_key);
 CREATE INDEX idx_autoruns_rule ON automation_runs (rule_id, created_at);
 CREATE INDEX idx_autoruns_tenant ON automation_runs (tenant_id, created_at);
 CREATE INDEX idx_bcastrcpt_broadcast ON broadcast_recipients (broadcast_id, status);

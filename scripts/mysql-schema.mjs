@@ -225,11 +225,17 @@ for (const idx of indexes) {
   }
 }
 
+/** Does this column definition carry a DEFAULT of its own? */
+function hasDefault(col) {
+  return /\bDEFAULT\s+('(?:[^']*)'|\S+)/i.test(col.rest ?? '');
+}
+
 function typeFor(table, col) {
   const qualified = `${table}.${col.name}`;
   return mysqlType(col.type, {
     primaryKey: keyColumns.has(qualified),
     indexed: indexedColumns.has(qualified),
+    hasDefault: hasDefault(col),
   });
 }
 
@@ -245,11 +251,51 @@ const generatedColumns = new Map();  // table -> [{ name, expr, source }]
 const translatedIndexes = [];
 const skippedIndexes = [];
 
+/**
+ * Which partial unique indexes are genuinely one half of a NULL/NOT NULL pair.
+ *
+ * The sentinel below turns NULL into a concrete value so that one unique index
+ * can cover both halves — correct when both halves exist, and wrong otherwise.
+ * A lone `WHERE col IS NOT NULL` means "unique among the rows that have one",
+ * and mapping every NULL to the same sentinel makes those rows collide with
+ * each other. That is stricter than SQLite, and it rejects rows the
+ * application is right to write: a second payment with no idempotency key, a
+ * second webhook with no event id, a second call with no provider id.
+ *
+ * MySQL already does exactly what a lone `IS NOT NULL` partial index means —
+ * a unique index does not collide on NULL — so those need no sentinel at all.
+ */
+const pairKey = (table, guard, columns) =>
+  `${table}|${guard}|${columns.filter(c => c.replace(/[`"]/g, '') !== guard).join(',')}`;
+
+const nullSense = new Map();   // pair key -> { hasNull, hasNotNull }
+for (const idx of indexes) {
+  if (!idx.where || !idx.unique) continue;
+  const g = /(\w+)\s+IS\s+(NOT\s+)?NULL/i.exec(idx.where);
+  if (!g) continue;
+  const key = pairKey(idx.table, g[1], idx.columns);
+  const seen = nullSense.get(key) ?? { hasNull: false, hasNotNull: false };
+  if (g[2]) seen.hasNotNull = true; else seen.hasNull = true;
+  nullSense.set(key, seen);
+}
+
 for (const idx of indexes) {
   if (!idx.where) { translatedIndexes.push(idx); continue; }
 
   const nullable = /(\w+)\s+IS\s+NOT\s+NULL/i.exec(idx.where);
   const isNull = /(\w+)\s+IS\s+NULL/i.exec(idx.where);
+
+  // A lone `IS NOT NULL`: MySQL's own NULL handling is the translation.
+  if (idx.unique && nullable && !isNull) {
+    const seen = nullSense.get(pairKey(idx.table, nullable[1], idx.columns));
+    if (!seen?.hasNull) {
+      translatedIndexes.push({
+        ...idx, where: null,
+        note: `${idx.where} needs no predicate here: a MySQL unique index does not collide on NULL`,
+      });
+      continue;
+    }
+  }
 
   // The tenant_id NULL/NOT NULL pair.
   if (idx.unique && (nullable || isNull)) {
@@ -383,8 +429,19 @@ function renderColumn(table, col) {
   // but emitting them as table-level constraints keeps the ordering explicit.
   rest = rest.replace(/\s*REFERENCES\s+[`"]?\w+[`"]?\s*(\([^)]*\))?(\s+ON\s+DELETE\s+[A-Z\s]+)?(\s+ON\s+UPDATE\s+[A-Z\s]+)?/gi, '');
 
-  // A TEXT column cannot carry a DEFAULT in MySQL.
-  if (type === 'TEXT') rest = rest.replace(/\s*DEFAULT\s+('(?:[^']*)'|\S+)/gi, '');
+  // A TEXT column cannot carry a DEFAULT in MySQL — but silently dropping it
+  // is how 138 NOT NULL columns ended up with no default and rejected every
+  // insert that relied on one. typeFor gives a column with a DEFAULT a
+  // VARCHAR instead, so this only ever fires for a type that genuinely cannot
+  // hold one, and says so rather than doing it quietly.
+  if (type === 'TEXT' || type === 'LONGBLOB') {
+    const dropped = /\bDEFAULT\s+('(?:[^']*)'|\S+)/i.exec(rest);
+    if (dropped) {
+      throw new Error(
+        `${table}.${col.name} is ${type} and carries ${dropped[0].trim()}, which MySQL cannot store. `
+        + 'Give the column a length in the migration, or remove the default.');
+    }
+  }
 
   // A column's own CHECK body names the column, so it needs the same quoting
   // the column definition got — `trigger TEXT CHECK (trigger IN (...))` is

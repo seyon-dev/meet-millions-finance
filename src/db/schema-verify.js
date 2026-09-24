@@ -71,20 +71,32 @@ export function parseExpectedSchema(sql) {
  *            missingColumns: string[], missingIndexes: string[],
  *            extraTables: string[], summary: string}}
  */
-export function compareSchema(expected, actual, { ignoreTables = new Set(['schema_migrations']) } = {}) {
+export function compareSchema(expected, actual, {
+  ignoreTables = new Set(['schema_migrations']),
+  pending = { columns: new Set(), indexes: new Set() },
+} = {}) {
   const missingTables = [];
   const missingColumns = [];
   const missingIndexes = [];
+  const explained = [];
 
   for (const [name, want] of expected) {
     const have = actual.get(name);
     if (!have) { missingTables.push(name); continue; }
 
     for (const column of want.columns) {
-      if (!have.columns.has(column)) missingColumns.push(`${name}.${column}`);
+      if (have.columns.has(column)) continue;
+      // A column a pending migration is about to add is not evidence that
+      // this database is something else. Without this, moving the baseline
+      // forward made every database imported from an older one impossible to
+      // adopt — which is every database already in service.
+      if (pending.columns.has(`${name}.${column}`)) { explained.push(`${name}.${column}`); continue; }
+      missingColumns.push(`${name}.${column}`);
     }
     for (const index of want.indexes) {
-      if (!have.indexes.has(index)) missingIndexes.push(`${name}.${index}`);
+      if (have.indexes.has(index)) continue;
+      if (pending.indexes.has(`${name}.${index}`)) { explained.push(`${name}.${index}`); continue; }
+      missingIndexes.push(`${name}.${index}`);
     }
   }
 
@@ -104,15 +116,17 @@ export function compareSchema(expected, actual, { ignoreTables = new Set(['schem
   if (missingColumns.length) parts.push(`${missingColumns.length} missing column(s)`);
   if (missingIndexes.length) parts.push(`${missingIndexes.length} missing index(es)`);
 
+  const total = [...expected.values()].reduce((n, t) => n + t.indexes.size, 0);
   return {
     matches,
     missingTables: missingTables.sort(),
     missingColumns: missingColumns.sort(),
     missingIndexes: missingIndexes.sort(),
+    explained: explained.sort(),
     extraTables,
     summary: matches
-      ? `Matches the baseline: ${expected.size} tables, `
-        + `${[...expected.values()].reduce((n, t) => n + t.indexes.size, 0)} indexes.`
+      ? `Matches the baseline: ${expected.size} tables, ${total} indexes.`
+        + (explained.length ? ` ${explained.length} difference(s) a pending migration accounts for.` : '')
       : parts.join(', '),
   };
 }

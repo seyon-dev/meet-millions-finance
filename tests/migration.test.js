@@ -418,10 +418,48 @@ describe('Migration planning', () => {
     if (!existsSync('database/mysql')) return;
     const incrementals = readdirSync('database/mysql').filter(f => f.endsWith('.sql'));
     const sources = readdirSync('database/migrations').filter(f => f.endsWith('.sql'));
+
     for (const file of incrementals) {
-      assert.ok(sources.some(s => s.slice(0, 4) === file.slice(0, 4)),
+      if (sources.some(s => s.slice(0, 4) === file.slice(0, 4))) continue;
+
+      // One narrow exception: a migration that repairs the SQLite → MySQL
+      // translation rather than changing the schema. The SQLite side was
+      // already correct, so there is nothing to mirror there — the whole
+      // point is that the two had diverged. It has to say so, and say why, so
+      // the exception cannot be used to smuggle in a real schema change that
+      // the test suite would then never exercise.
+      const sql = readFileSync(join('database/mysql', file), 'utf8');
+      const declared = /^--\s*TRANSLATION-ONLY:\s*(.+)$/m.exec(sql);
+
+      assert.ok(declared,
         `${file} has no matching migration in database/migrations — the tests run `
-        + 'against those, so SQL that exists only here is never exercised');
+        + 'against those, so SQL that exists only here is never exercised. If it repairs '
+        + 'the translation rather than the schema, say so with a `-- TRANSLATION-ONLY: <why>` line.');
+      assert.ok(declared[1].trim().length >= 20,
+        `${file} declares TRANSLATION-ONLY but does not say why`);
+    }
+  });
+
+  test('a translation-only migration changes no table the SQLite schema does not already have', () => {
+    if (!existsSync('database/mysql')) return;
+    const sourceSql = readdirSync('database/migrations').filter(f => f.endsWith('.sql')).sort()
+      .map(f => readFileSync(join('database/migrations', f), 'utf8')).join('\n');
+    const sourceTables = new Set(
+      [...sourceSql.matchAll(/CREATE TABLE(?: IF NOT EXISTS)?\s+[`"]?(\w+)[`"]?/gi)]
+        .map(m => m[1].toLowerCase()));
+
+    for (const file of readdirSync('database/mysql').filter(f => f.endsWith('.sql'))) {
+      const sql = readFileSync(join('database/mysql', file), 'utf8');
+      if (!/^--\s*TRANSLATION-ONLY:/m.test(sql)) continue;
+
+      // It may only touch tables SQLite already defines. A new table here
+      // would be a schema change wearing the exception's clothes.
+      for (const m of sql.matchAll(/(?:ALTER TABLE|CREATE(?: UNIQUE)? INDEX\s+\S+\s+ON|DROP INDEX\s+\S+\s+ON)\s+[`"]?(\w+)[`"]?/gi)) {
+        assert.ok(sourceTables.has(m[1].toLowerCase()),
+          `${file} touches ${m[1]}, which database/migrations never creates`);
+      }
+      assert.doesNotMatch(sql, /CREATE TABLE/i,
+        `${file} is declared TRANSLATION-ONLY but creates a table`);
     }
   });
 

@@ -149,6 +149,22 @@ export function toMysql(sql) {
   // the migration runner goes through MysqlD1.exec, which does not translate.
   let out = quoteReservedIdentifiers(String(sql));
 
+  // PRAGMA table_info(x) → information_schema.
+  //
+  // Db.columnsOf reads a table's columns to decide whether it carries
+  // created_at / updated_at, which is far more reliable than a hand-kept list.
+  // It asked SQLite the only way SQLite answers, and MySQL has no PRAGMA at
+  // all — so the statement arrived as a syntax error. TenantScope calls it on
+  // every tenant-scoped insert and update, so on MySQL that was most of the
+  // application, registration included.
+  //
+  // The alias matters: the caller reads `row.name`, which is what SQLite's
+  // PRAGMA returns and what this has to keep returning.
+  out = out.replace(
+    /\bPRAGMA\s+table_info\s*\(\s*`?([A-Za-z_][\w$]*)`?\s*\)/gi,
+    (_, table) => 'SELECT column_name AS name FROM information_schema.columns '
+      + `WHERE table_schema = DATABASE() AND table_name = '${table}'`);
+
   // INSERT OR IGNORE → INSERT IGNORE. Used by the bootstrap seeder and the
   // rate limiter, both of which rely on the insert being a no-op on conflict.
   out = out.replace(/\bINSERT\s+OR\s+IGNORE\s+INTO\b/gi, 'INSERT IGNORE INTO');
@@ -199,7 +215,7 @@ export function toMysql(sql) {
  * single largest source of change in this schema, since every primary key is
  * a `TEXT PRIMARY KEY`.
  */
-export function mysqlType(sqliteType, { indexed = false, primaryKey = false } = {}) {
+export function mysqlType(sqliteType, { indexed = false, primaryKey = false, hasDefault = false } = {}) {
   const t = String(sqliteType ?? '').trim().toUpperCase();
 
   if (t.startsWith('INTEGER')) return 'INT';
@@ -210,5 +226,18 @@ export function mysqlType(sqliteType, { indexed = false, primaryKey = false } = 
   // 30 characters or so. 64 leaves room and keeps the index narrow.
   if (primaryKey) return 'VARCHAR(64)';
   if (indexed) return 'VARCHAR(255)';
+
+  // A column with a DEFAULT must not be TEXT: MySQL does not allow a default
+  // on TEXT, so the generator used to drop it. That left 138 NOT NULL columns
+  // across 76 tables with no default at all, and under STRICT_TRANS_TABLES
+  // every insert that relied on one — a status, a priority, a currency —
+  // failed with "Field 'x' doesn't have a default value". SQLite filled them
+  // in, so nothing in the test suite could see it.
+  //
+  // These defaults are all short enum-like words: 'active', 'pending',
+  // 'monthly'. VARCHAR(255) keeps the default and stays inside InnoDB's index
+  // limit at utf8mb4.
+  if (hasDefault) return 'VARCHAR(255)';
+
   return 'TEXT';
 }

@@ -31,6 +31,40 @@ const sqlFiles = (dir) => (existsSync(dir)
 
 
 /**
+ * What the un-applied incremental migrations are about to add.
+ *
+ * The baseline moves forward when a migration is added, and a database
+ * imported from an older one is then missing whatever the new migration
+ * creates. That is not evidence the database is something else — it is the
+ * ordinary state of every database already in service, and refusing to adopt
+ * over it leaves them with no upgrade path at all.
+ *
+ * Deliberately only reads CREATE INDEX and ADD COLUMN. A migration that drops
+ * or modifies cannot explain a *missing* thing, so there is nothing to widen
+ * the check for, and anything this does not recognise stays a difference.
+ */
+export function pendingChanges(files) {
+  const columns = new Set();
+  const indexes = new Set();
+
+  for (const file of files) {
+    let sql;
+    try { sql = readFileSync(resolve(INCREMENTAL_DIR, file), 'utf8'); } catch { continue; }
+
+    for (const m of sql.matchAll(
+      /CREATE\s+(?:UNIQUE\s+)?INDEX\s+`?(\w+)`?\s+ON\s+`?(\w+)`?/gi)) {
+      indexes.add(`${m[2].toLowerCase()}.${m[1].toLowerCase()}`);
+    }
+    for (const m of sql.matchAll(
+      /ALTER\s+TABLE\s+`?(\w+)`?\s+ADD\s+(?:COLUMN\s+)?`?(\w+)`?/gi)) {
+      columns.add(`${m[1].toLowerCase()}.${m[2].toLowerCase()}`);
+    }
+  }
+
+  return { columns, indexes };
+}
+
+/**
  * Read the actual structure out of information_schema.
  *
  * Two queries rather than one per table: a CRM schema is 116 tables and 1,800
@@ -119,7 +153,8 @@ export async function runMigration({ dryRun = false, log = () => {} } = {}) {
       log('Existing tables with no migration record — verifying against the baseline…');
       verification = compareSchema(
         parseExpectedSchema(baselineSql),
-        await readActualSchema(conn, config.database));
+        await readActualSchema(conn, config.database),
+        { pending: pendingChanges(sqlFiles(INCREMENTAL_DIR)) });
     }
 
     const plan = planMigration({
