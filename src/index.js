@@ -96,8 +96,14 @@ export default {
             status: 'ready',
             seededNow: bootstrap.ran,
             catalogueVersion: BOOTSTRAP_VERSION,
-            // Present only on the request that did the seeding.
-            platformOwner: bootstrap.report?.platformOwner ?? null,
+            // The outcome, never the address: /ready is unauthenticated,
+            // and the owner's email is nobody's business but the log's.
+            platformOwner: bootstrap.report?.platformOwner
+              ? {
+                  created: bootstrap.report.platformOwner.created,
+                  reason: bootstrap.report.platformOwner.reason ?? null,
+                }
+              : null,
           },
           error: null,
           meta: { timestamp: new Date().toISOString() },
@@ -179,7 +185,10 @@ function allowedOrigin(request, env) {
   const origin = request.headers.get('origin');
   if (!origin) return null;
   const configured = String(env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
-  if (configured.includes('*')) return origin;
+  // The wildcard stays a literal '*'. Reflecting the caller's origin instead
+  // would re-enable credentialed requests from anywhere, which is exactly the
+  // combination browsers refuse for '*'.
+  if (configured.includes('*')) return '*';
   if (configured.includes(origin)) return origin;
   try {
     if (env.APP_URL && new URL(env.APP_URL).origin === origin) return origin;
@@ -193,11 +202,13 @@ function preflight(request, env) {
   if (origin) {
     Object.assign(headers, {
       'Access-Control-Allow-Origin': origin,
-      'Access-Control-Allow-Credentials': 'true',
       'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Api-Key, X-Requested-With, X-Company-Id',
-      Vary: 'Origin',
     });
+    // Credentials never accompany the wildcard.
+    if (origin !== '*') {
+      Object.assign(headers, { 'Access-Control-Allow-Credentials': 'true', Vary: 'Origin' });
+    }
   }
   return new Response(null, { status: 204, headers });
 }
@@ -207,8 +218,10 @@ function withCors(response, request, env) {
   if (!origin) return response;
   const headers = new Headers(response.headers);
   headers.set('Access-Control-Allow-Origin', origin);
-  headers.set('Access-Control-Allow-Credentials', 'true');
-  headers.append('Vary', 'Origin');
+  if (origin !== '*') {
+    headers.set('Access-Control-Allow-Credentials', 'true');
+    headers.append('Vary', 'Origin');
+  }
   return new Response(response.body, { status: response.status, headers });
 }
 

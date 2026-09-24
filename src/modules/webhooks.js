@@ -333,7 +333,7 @@ router.post('/whatsapp', async (ctx) => {
     const changes = await db.run(
       `UPDATE message_deliveries SET status = ?, updated_at = ? WHERE provider_message_id = ?`,
       [mapWhatsAppStatus(statusUpdate.status), nowIso(), statusUpdate.id]);
-    outcome = changes.meta?.changes
+    outcome = changes?.changes
       ? { status: 'processed', message: `Delivery ${statusUpdate.id} is ${statusUpdate.status}.` }
       : { status: 'ignored', message: 'No delivery matches that message id.' };
   } else if (message) {
@@ -344,15 +344,33 @@ router.post('/whatsapp', async (ctx) => {
   return receipt({ source: 'whatsapp', status: outcome.status, id: record.id });
 }, { auth: false, rateLimit: 'webhook' });
 
+/** Every scalar value in an integration's stored config, for exact matching. */
+function configValues(json) {
+  const out = new Set();
+  try {
+    const walk = (v) => {
+      if (v === null || v === undefined) return;
+      if (typeof v === 'object') { Object.values(v).forEach(walk); return; }
+      out.add(String(v));
+    };
+    walk(JSON.parse(json ?? '{}'));
+  } catch { /* an unparseable config matches nothing */ }
+  return out;
+}
+
 async function storeInboundWhatsApp(db, change, message) {
   const businessNumber = change?.metadata?.display_phone_number
     ?? change?.metadata?.phone_number_id ?? null;
-  // The business number is stored in the integration's own config, so the
-  // match is on that rather than on a column the table does not have.
+  // An inbound message is only ever attributed to the organisation whose
+  // integration config names the receiving business number, by exact value.
+  // No number, or no match, means the event is dropped — guessing would
+  // deliver one organisation's messages into another's inbox.
+  if (!businessNumber) {
+    return { status: 'ignored', message: 'The event does not name a receiving business number.' };
+  }
   const candidates = await db.many(
     "SELECT tenant_id, config_json FROM integrations WHERE provider = 'whatsapp' AND status = 'connected'");
-  const integration = candidates.find(c => !businessNumber
-    || String(c.config_json ?? '').includes(String(businessNumber))) ?? candidates[0] ?? null;
+  const integration = candidates.find(c => configValues(c.config_json).has(String(businessNumber))) ?? null;
   if (!integration) {
     return { status: 'ignored', message: 'No organisation is connected to that WhatsApp number.' };
   }

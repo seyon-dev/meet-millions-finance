@@ -13,12 +13,13 @@
 import { AuthRequiredError, ForbiddenError, TwoFactorRequiredError } from '../http/errors.js';
 import { Db } from '../db/client.js';
 import {
-  resolveSession, touchSession, isStepUpFresh,
+  resolveSession, touchSession, revokeSession, isStepUpFresh,
 } from './session.js';
 import { loadIdentity } from './identity.js';
 import { verifyApiKey } from './apikey.js';
 import { assertFeature } from '../services/features.js';
-import { isIpAllowed } from '../services/security.js';
+import { isIpAllowed, getSecurityPolicy } from '../services/security.js';
+import { addMinutes, isPast } from '../utils/time.js';
 
 function bearerToken(request) {
   const header = request.headers.get('authorization') || '';
@@ -62,6 +63,17 @@ export async function authenticate(ctx) {
 
   const identity = await loadIdentity(db, session.user_id);
 
+  // The organisation's own idle cut-off (Settings -> Security). The env var,
+  // enforced inside resolveSession above, is a deployment-wide setting;
+  // whichever of the two is stricter wins.
+  const policy = await getSecurityPolicy(db, identity.user.tenant_id);
+  const policyIdle = Number(policy.idle_timeout_minutes || 0);
+  if (policyIdle > 0 && isPast(addMinutes(policyIdle, new Date(session.last_seen_at)))) {
+    await revokeSession(db, session.id, 'idle_timeout');
+    return;
+  }
+  ctx.securityPolicy = policy;
+
   ctx.session = session;
   ctx.user = identity.user;
   ctx.tenant = identity.tenant;
@@ -97,8 +109,18 @@ export async function authorize(ctx, route) {
     throw new TwoFactorRequiredError('Finish two-factor verification to continue.');
   }
 
-  if (opts.stepUp && ctx.session && !isStepUpFresh(ctx.session, opts.stepUpMinutes ?? 15)) {
-    throw new TwoFactorRequiredError('Confirm your identity to perform this action.', { stepUp: true });
+  // Step-up on sensitive routes. When the organisation's policy asks to be
+  // challenged again ("Ask again for a code before sensitive actions"), the
+  // confirmation must be recent; otherwise the one given at sign-in stands.
+  // POST /api/auth/2fa/step-up refreshes it.
+  if (opts.stepUp && ctx.session) {
+    const askAgain = !!Number(ctx.securityPolicy?.step_up_for_sensitive ?? 0);
+    const satisfied = askAgain
+      ? isStepUpFresh(ctx.session, opts.stepUpMinutes ?? 15)
+      : !!ctx.session.step_up_at;
+    if (!satisfied) {
+      throw new TwoFactorRequiredError('Confirm your identity to perform this action.', { stepUp: true });
+    }
   }
 
   // Tenant IP allow-listing (Enterprise Security add-on).

@@ -114,13 +114,14 @@ describe('Administration', () => {
     });
     assert.equal(allowed.status, 201, JSON.stringify(allowed.body));
 
-    // Inviting at or above their own level is still refused.
+    // Inviting above their own level is still refused. (A peer at the same
+    // level is allowed — an admin must be able to appoint another admin.)
     const refused = await app.request('/api/users', {
       method: 'POST', token: managerToken,
       body: { email: 'boss@meridiantax.test', fullName: 'Ravi Menon', roleKey: 'admin' },
     });
     assert.equal(refused.status, 403, JSON.stringify(refused.body));
-    assert.match(refused.error.message, /at or above your own level/);
+    assert.match(refused.error.message, /above your own level/);
 
     // And the admin who registered the organisation is off limits to them.
     const admins = await app.request('/api/users?q=asha', { token: managerToken });

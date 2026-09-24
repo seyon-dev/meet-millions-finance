@@ -28,7 +28,7 @@ import { ROLE_MAP, landingPathFor, permissionsForRoles } from '../permissions/ro
 import { PERMISSIONS } from '../permissions/catalog.js';
 import {
   getSecurityPolicy, upsertDevice, recordLoginEvent, registerFailedLogin,
-  clearFailedLogins, isLockedOut, detectAnomaly,
+  clearFailedLogins, isLockedOut, detectAnomaly, consumeTotpStep,
 } from '../services/security.js';
 import { audit, auditAsync } from '../services/audit.js';
 import { entitlementsPayload } from '../services/features.js';
@@ -135,8 +135,19 @@ router.post('/login', async (ctx) => {
   await consumeAttempt(ctx, 'auth.login', `email:${input.email}`);
 
   const db = new Db(ctx.env.DB);
-  const user = await db.one(
-    'SELECT * FROM users WHERE email = ? AND deleted_at IS NULL LIMIT 1', [input.email]);
+  // Email is unique per organisation, not globally, so the same address can
+  // legitimately hold an account in two organisations. When it does, the
+  // password decides which account is signing in — not whichever row the
+  // database happens to return first.
+  const candidates = await db.many(
+    'SELECT * FROM users WHERE email = ? AND deleted_at IS NULL ORDER BY created_at, id LIMIT 10',
+    [input.email]);
+  let user = candidates[0] ?? null;
+  if (candidates.length > 1) {
+    for (const candidate of candidates) {
+      if (await verifyPassword(input.password, candidate.password_hash)) { user = candidate; break; }
+    }
+  }
 
   // The same message for "no such user" and "wrong password" — an attacker
   // learns nothing about which addresses exist.
@@ -311,7 +322,10 @@ router.post('/2fa/verify', async (ctx) => {
   const secret = await decryptString(user.twofa_secret, ctx.env.ENCRYPTION_KEY || ctx.env.AUTH_SECRET);
   if (!secret) throw new AuthRequiredError('Two-factor is not set up correctly for this account.', 'twofa_misconfigured');
 
-  let verified = await verifyTotp(secret, input.code) !== null;
+  // A correct code must also be *new*: the matching time-step is recorded,
+  // and a code at or before the last accepted step is refused as a replay.
+  const totpOffset = await verifyTotp(secret, input.code);
+  let verified = totpOffset !== null && await consumeTotpStep(db, user.id, totpOffset);
   let usedBackupCode = false;
 
   if (!verified && user.twofa_backup_codes) {
@@ -377,6 +391,16 @@ router.post('/2fa/verify', async (ctx) => {
 // ---------------------------------------------------------------------------
 router.post('/2fa/setup', async (ctx) => {
   const db = new Db(ctx.env.DB);
+
+  // Never replace the secret of an account whose 2FA is live: that would let
+  // whoever holds a session swap the second factor without knowing either the
+  // password or a current code. Disabling first requires the password.
+  const current = await db.findOne('users', { id: ctx.userId });
+  if (current?.twofa_enabled) {
+    throw new ConflictError(
+      'Two-factor authentication is already on. Disable it first to enrol a new device.');
+  }
+
   const secret = generateTotpSecret();
   const encrypted = await encryptString(secret, ctx.env.ENCRYPTION_KEY || ctx.env.AUTH_SECRET);
 
@@ -402,7 +426,8 @@ router.post('/2fa/enable', async (ctx) => {
   const secret = await decryptString(user.twofa_secret, ctx.env.ENCRYPTION_KEY || ctx.env.AUTH_SECRET);
   if (!secret) throw new BadRequestError('Start the setup again — no pending two-factor secret was found.');
 
-  if (await verifyTotp(secret, input.code) === null) {
+  const enrolOffset = await verifyTotp(secret, input.code);
+  if (enrolOffset === null || !(await consumeTotpStep(db, ctx.userId, enrolOffset))) {
     throw new ValidationError('That code is not correct.', { code: 'Check the 6-digit code in your authenticator app.' });
   }
 
@@ -478,6 +503,49 @@ router.post('/2fa/backup-codes', async (ctx) => {
 });
 
 // ---------------------------------------------------------------------------
+// Step-up: sensitive routes ({ stepUp: true }) can demand that the identity
+// check happened recently, not merely at sign-in. This is where a signed-in
+// person re-satisfies it — with a current authenticator code when 2FA is
+// enrolled, or with their password when it is not.
+// ---------------------------------------------------------------------------
+router.post('/2fa/step-up', async (ctx) => {
+  const body = await ctx.body();
+  const input = validate(body, {
+    code: { type: 'string', max: 20 },
+    password: { type: 'string', max: 256 },
+  });
+  if (!ctx.session) {
+    throw new BadRequestError('Step-up confirmation only applies to interactive sessions.');
+  }
+  await consumeAttempt(ctx, 'auth.twofa', `stepup:${ctx.userId}`);
+
+  const db = new Db(ctx.env.DB);
+  const user = await db.findOne('users', { id: ctx.userId });
+
+  if (user.twofa_enabled) {
+    const secret = await decryptString(user.twofa_secret, ctx.env.ENCRYPTION_KEY || ctx.env.AUTH_SECRET);
+    const offset = secret ? await verifyTotp(secret, input.code ?? '') : null;
+    if (offset === null || !(await consumeTotpStep(db, user.id, offset))) {
+      throw new ValidationError('That code is not correct.',
+        { code: 'Check the 6-digit code in your authenticator app.' });
+    }
+  } else if (!input.password || !(await verifyPassword(input.password, user.password_hash))) {
+    throw new ValidationError('Password is not correct.',
+      { password: 'Enter your current password to confirm.' });
+  }
+
+  await markTwoFactorSatisfied(db, ctx.session.id);
+
+  auditAsync(ctx, {
+    action: 'auth.step_up', category: 'auth', severity: 'notice',
+    entityType: 'user', entityId: ctx.userId, entityLabel: ctx.user.email,
+    metadata: { method: user.twofa_enabled ? 'totp' : 'password' },
+  });
+
+  return ok({ confirmed: true }, { ctx });
+}, { rateLimit: 'auth.twofa' });
+
+// ---------------------------------------------------------------------------
 // Password lifecycle
 // ---------------------------------------------------------------------------
 router.post('/forgot-password', async (ctx) => {
@@ -486,8 +554,12 @@ router.post('/forgot-password', async (ctx) => {
   await consumeAttempt(ctx, 'auth.forgot', `email:${input.email}`);
 
   const db = new Db(ctx.env.DB);
-  const user = await db.one(
-    'SELECT * FROM users WHERE email = ? AND deleted_at IS NULL LIMIT 1', [input.email]);
+  // The address may hold an account in more than one organisation (email is
+  // unique per tenant). Each one gets its own reset link — they all land in
+  // the same mailbox, and leaving one account unrecoverable is worse.
+  const users = await db.many(
+    'SELECT * FROM users WHERE email = ? AND deleted_at IS NULL ORDER BY created_at, id LIMIT 10',
+    [input.email]);
 
   // Always the same answer, whether or not the address exists.
   const response = ok({
@@ -495,30 +567,32 @@ router.post('/forgot-password', async (ctx) => {
     message: 'If that email address has an account, a reset link is on its way.',
   }, { ctx });
 
-  if (!user || user.status === 'deactivated') return response;
+  for (const user of users) {
+    if (user.status === 'deactivated') continue;
 
-  const token = randomToken(32);
-  await db.insert('password_resets', {
-    id: ID.reset(),
-    user_id: user.id,
-    token_hash: await sha256Hex(token),
-    ip: ctx.ip,
-    used_at: null,
-    created_at: nowIso(),
-    expires_at: addMinutes(60),
-  });
+    const token = randomToken(32);
+    await db.insert('password_resets', {
+      id: ID.reset(),
+      user_id: user.id,
+      token_hash: await sha256Hex(token),
+      ip: ctx.ip,
+      used_at: null,
+      created_at: nowIso(),
+      expires_at: addMinutes(60),
+    });
 
-  ctx.tenantId = user.tenant_id;
-  ctx.defer(dispatchNotification(ctx, {
-    triggerKey: 'account.password_reset',
-    tenantId: user.tenant_id,
-    userId: user.id,
-    variables: {
-      name: user.full_name,
-      resetUrl: `${ctx.env.APP_URL || ''}/reset-password?token=${encodeURIComponent(token)}`,
-      expiresIn: '60 minutes',
-    },
-  }));
+    ctx.tenantId = user.tenant_id;
+    ctx.defer(dispatchNotification(ctx, {
+      triggerKey: 'account.password_reset',
+      tenantId: user.tenant_id,
+      userId: user.id,
+      variables: {
+        name: user.full_name,
+        resetUrl: `${ctx.env.APP_URL || ''}/reset-password?token=${encodeURIComponent(token)}`,
+        expiresIn: '60 minutes',
+      },
+    }));
+  }
 
   return response;
 }, { ...PUBLIC, rateLimit: 'auth.forgot' });

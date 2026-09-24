@@ -97,13 +97,37 @@ function expandIpv6(addr) {
 export async function isIpAllowed(ctx) {
   if (!ctx.tenantId) return true;
   const db = new Db(ctx.env.DB);
-  const policy = await getSecurityPolicy(db, ctx.tenantId);
+  const policy = ctx.securityPolicy ?? await getSecurityPolicy(db, ctx.tenantId);
   if (!policy.ip_allowlist_enabled) return true;
 
   const entries = await db.many(
     'SELECT cidr FROM ip_allowlist WHERE tenant_id = ?', [ctx.tenantId]);
   if (!entries.length) return true;  // an empty list is not a lockout
   return entries.some(e => ipInCidr(ctx.ip, e.cidr));
+}
+
+/**
+ * TOTP replay protection: remember the last accepted time-step per user and
+ * refuse any code at or before it. A code is valid for a few steps either
+ * side of "now", so without this a shoulder-surfed or intercepted code could
+ * be replayed inside that window. The rate_limits table already exists and
+ * fits the shape (a keyed counter with an expiry), so no migration is needed;
+ * the row expires long after the acceptance window has passed.
+ *
+ * Returns true when the step is fresh and now recorded, false on a replay.
+ * The INSERT-then-conditional-UPDATE keeps two concurrent attempts with the
+ * same code from both passing: only one UPDATE can move the counter forward.
+ */
+export async function consumeTotpStep(db, userId, offset, { at = Date.now(), period = 30 } = {}) {
+  const step = Math.floor(at / 1000 / period) + offset;
+  const id = `totp:${userId}`;
+  await db.run(
+    'INSERT OR IGNORE INTO rate_limits (id, scope, window_start, count, expires_at) VALUES (?, ?, ?, ?, ?)',
+    [id, 'totp', nowIso(), -1, addMinutes(15)]);
+  const meta = await db.run(
+    'UPDATE rate_limits SET count = ?, window_start = ?, expires_at = ? WHERE id = ? AND count < ?',
+    [step, nowIso(), addMinutes(15), id, step]);
+  return !!meta?.changes;
 }
 
 /** A stable-per-browser fingerprint; deliberately coarse, never a tracking id. */

@@ -38,7 +38,7 @@ router.get('/', async (ctx) => {
     accountant: accountantDashboard,
     client: clientDashboard,
     auditor: auditorDashboard,
-  }[role] ?? firmDashboard;
+  }[role] ?? fallbackDashboard(ctx);
 
   const dashboard = await builder(ctx, scope);
   return ok({ role, generatedAt: nowIso(), ...dashboard }, { ctx });
@@ -579,6 +579,17 @@ async function platformDashboard(ctx) {
 // ---------------------------------------------------------------------------
 // Shared pieces
 // ---------------------------------------------------------------------------
+/**
+ * A custom role has no dedicated dashboard, so pick by what the caller may
+ * actually see — never default to the firm dashboard, whose revenue and
+ * receivables a limited role's permissions would otherwise hide.
+ */
+function fallbackDashboard(ctx) {
+  if (ctx.has('billing.view') && ctx.has('reports.view')) return firmDashboard;
+  if (ctx.has('documents.view')) return executiveDashboard;
+  return clientDashboard;
+}
+
 function primaryRole(ctx) {
   if (ctx.isSuperAdmin) return 'super_admin';
   const order = ['admin', 'finance_manager', 'finance_executive', 'accountant', 'auditor', 'client'];

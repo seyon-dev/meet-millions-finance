@@ -432,7 +432,10 @@ function safeJson(raw, fallback) {
   if (!raw) return fallback;
   try { return JSON.parse(raw); } catch { return fallback; }
 }
-function bool(v) { return v === undefined ? undefined : (v ? 1 : 0); }
+// validate() reports an omitted optional boolean as null — treat it exactly
+// like undefined, or every partial PATCH silently writes 0 over the columns
+// the caller never mentioned (prune() keeps 0; it only drops null/undefined).
+function bool(v) { return v === undefined || v === null ? undefined : (v ? 1 : 0); }
 /**
  * Drop absent fields from a patch.
  *

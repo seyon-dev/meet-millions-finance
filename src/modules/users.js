@@ -224,9 +224,10 @@ router.post('/', async (ctx) => {
         name: input.fullName,
         organisation: ctx.tenant?.name ?? 'your organisation',
         email: input.email,
+        inviterName: ctx.user?.fullName ?? 'An administrator',
+        roleName: role.name,
         temporaryPassword,
         loginUrl: `${ctx.env.APP_URL || ''}/login`,
-        expiresAt: addDays(7),
       },
     });
     invite = {
@@ -523,12 +524,14 @@ router.delete('/:id', async (ctx) => {
 router.delete('/:id/sessions/:sessionId', async (ctx) => {
   const scope = scopeFor(ctx);
   const user = await scope.getOrFail('users', ctx.params.id, { resource: 'User' });
+  const roles = (await rolesForUsers(scope, [user.id])).get(user.id) ?? [];
+  assertCanEdit(ctx, user, roles);
   const db = new Db(ctx.env.DB);
   const result = await db.run(
     `UPDATE sessions SET revoked_at = ?, revoked_reason = 'admin'
       WHERE id = ? AND user_id = ? AND revoked_at IS NULL`,
     [nowIso(), ctx.params.sessionId, user.id]);
-  if (!result.meta?.changes) throw new NotFoundError('Session');
+  if (!result?.changes) throw new NotFoundError('Session');
 
   await audit(ctx, {
     action: 'auth.session_revoked', category: 'auth', severity: 'notice',
@@ -567,8 +570,8 @@ async function resolveRole(ctx, scope, key) {
   if (!ctx.isSuperAdmin) {
     const myLevel = highestLevel(ctx.roleKeys);
     const targetLevel = role.is_system ? roleLevel(role.key) : role.level;
-    if (targetLevel >= myLevel) {
-      throw new ForbiddenError(`You cannot assign the ${role.name} role — it sits at or above your own level.`);
+    if (targetLevel > myLevel) {
+      throw new ForbiddenError(`You cannot assign the ${role.name} role — it sits above your own level.`);
     }
   }
   return role;
