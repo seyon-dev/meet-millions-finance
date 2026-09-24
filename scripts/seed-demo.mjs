@@ -24,11 +24,22 @@ import { putObject, documentKey, tenantAssetKey } from '../src/services/storage.
  * The password every demonstration account gets.
  *
  * Overridable so a deployed demonstration is not sitting behind a password
- * published in this repository — scripts/seed-demo-cli.mjs insists on the
- * override when NODE_ENV=production.
+ * published in this repository — the seed refuses to write to a production
+ * database unless DEMO_PASSWORD is set.
+ *
+ * Read per call, not once at import. As a module-level constant this was
+ * captured the moment the file was first imported, while scripts/seed-guard.mjs
+ * reads the variable when it decides. The two could disagree, and the way they
+ * disagreed was the dangerous one: the guard saw DEMO_PASSWORD set and allowed
+ * the seed, and every account was then created with the password below —
+ * published, in this repository, on a Super Admin who can see every
+ * organisation. Exactly what the guard exists to stop.
  */
-export const DEMO_PASSWORD = process.env.DEMO_PASSWORD || 'Demo-Passw0rd!24';
-const PASSWORD = DEMO_PASSWORD;
+export const PUBLISHED_DEMO_PASSWORD = 'Demo-Passw0rd!24';
+
+export function demoPassword(env = process.env) {
+  return env.DEMO_PASSWORD || process.env.DEMO_PASSWORD || PUBLISHED_DEMO_PASSWORD;
+}
 /** Sits above every organisation, so it belongs to no tenant. */
 const PLATFORM_EMAIL = 'devika@meetmillions.example';
 
@@ -75,6 +86,9 @@ const STAFF = [
 ];
 
 export async function seedDemoData(env) {
+  // Resolved here, from the environment this call was handed, so it cannot
+  // drift from what the guard checked.
+  const PASSWORD = demoPassword(env);
   const db = new Db(env.DB);
   const ctx = { env, tenantId: null, userId: null, user: null };
 

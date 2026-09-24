@@ -315,16 +315,29 @@ no restart. If you only need to use the CRM, this is enough.
 
 ### Demonstration data, if you want screens with something on them
 
-`npm run seed` creates an invented practice — five client companies, a month
-of documents, computed GST and TDS, an invoice paid and one not — so the
-screens have something to show. It never drops or deletes anything, and
-running it twice writes nothing the second time.
+An invented practice — five client companies, a month of documents, computed
+GST and TDS, an invoice paid and one not — so the screens have something to
+show. It never drops or deletes anything.
 
-Set `DEMO_PASSWORD` to a password of your own first. Without it the seed
-refuses to run against a production database, because the fallback password is
-committed to this repository and the demonstration set includes a Super Admin
-who can see every organisation. See [demo-accounts.md](demo-accounts.md) for
-the full list and how to shut them out again.
+`npm run seed` does it from a shell. You do not have one here, so use the
+environment instead:
+
+1. Set two variables:
+   - `SEED_DEMO` = `true`
+   - `DEMO_PASSWORD` = a password of your own
+2. Restart.
+3. Read the runtime log. It prints what it created and the address to sign in
+   with, or says why it refused.
+4. **Set `SEED_DEMO=false` and restart.**
+
+Without `DEMO_PASSWORD` the seed refuses: the fallback is committed to this
+repository, and the set includes a Super Admin who can see every organisation.
+`SEED_DEMO_ACCEPT_RISK=true` overrides that, and means this deployment is a
+demonstration and nothing else.
+
+It writes once. A restart finds the organisation already there and does
+nothing. See [demo-accounts.md](demo-accounts.md) for the twelve accounts and
+how to shut them out again.
 
 ---
 

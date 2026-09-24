@@ -42,3 +42,17 @@ test('--check is read-only, so it reports rather than refusing', () => {
   assert.equal(d.dryRun, true);
   assert.equal(d.reason, 'dry_run');
 });
+
+test('the server startup path can accept the risk through the environment', () => {
+  // server.js has no argv to pass, so SEED_DEMO_ACCEPT_RISK is the same
+  // decision in the only form that path can express.
+  const d = decideSeed({ argv: [], env: { NODE_ENV: 'production', SEED_DEMO_ACCEPT_RISK: 'true' } });
+  assert.equal(d.allowed, true);
+});
+
+test('only the exact string true accepts it', () => {
+  for (const value of ['1', 'yes', 'TRUE', '', 'false']) {
+    const d = decideSeed({ argv: [], env: { NODE_ENV: 'production', SEED_DEMO_ACCEPT_RISK: value } });
+    assert.equal(d.allowed, false, `SEED_DEMO_ACCEPT_RISK=${value} must not be enough`);
+  }
+});

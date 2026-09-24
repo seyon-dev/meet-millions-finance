@@ -65,6 +65,20 @@ STORAGE_ROOT=/home/USERNAME/mm-storage
 # Run ONE instance with this on. Default false.
 AUTO_MIGRATE=false
 
+# ---- Demonstration data (optional) -----------------------------------------
+# SEED_DEMO=true creates an invented practice — five client companies, a month
+# of documents — at startup, for managed hosting where `npm run seed` cannot be
+# run. It writes once; a restart finds it and does nothing. Turn it off again
+# once you have signed in.
+#
+# DEMO_PASSWORD is the password every demonstration account gets. Unset, the
+# seed falls back to one committed to this repository, and seeding a production
+# database is refused for that reason — the set includes a Super Admin who can
+# see every organisation. SEED_DEMO_ACCEPT_RISK=true overrides that refusal.
+SEED_DEMO=false
+# DEMO_PASSWORD=
+# SEED_DEMO_ACCEPT_RISK=false
+
 # ---- Scheduled jobs --------------------------------------------------------
 # The three cron schedules run inside the Node process. Set to false on any
 # additional instance, or the jobs run twice.

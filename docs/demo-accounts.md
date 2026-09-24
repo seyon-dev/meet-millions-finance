@@ -13,13 +13,27 @@ npm run seed            # against the configured MySQL database
 npm run seed -- --check # report the target and change nothing
 ```
 
-**This needs a shell.** On managed hosting that does not give you one —
-Hostinger's Node.js app among them — you cannot run it, so these accounts will
-not exist on that deployment and signing in with them returns *"That email
-address and password do not match an account."* That is the application being
-truthful, not a fault. Create a real account instead: `/register` makes a
-practice and its Admin, and `PLATFORM_OWNER_EMAIL` / `PLATFORM_OWNER_PASSWORD`
-makes a Super Admin. See
+`npm run seed` needs a shell. On managed hosting that gives you none —
+Hostinger's Node.js app among them — use the environment instead:
+
+```
+SEED_DEMO=true
+DEMO_PASSWORD=<a password of your own>
+```
+
+Restart. The application creates the demonstration organisation before it
+starts listening and prints what it made to the runtime log. It writes once; a
+restart finds it already there and does nothing. **Set `SEED_DEMO=false` and
+restart once you have signed in** — leaving it on means every restart checks,
+and it is not a flag to forget about on something you are using for real.
+
+Until one of those has run, these accounts do not exist on that deployment and
+signing in with them returns *"That email address and password do not match an
+account."* That is the application being truthful, not a fault.
+
+You can also skip the demonstration data entirely: `/register` creates a
+practice and makes you its Admin, and `PLATFORM_OWNER_EMAIL` /
+`PLATFORM_OWNER_PASSWORD` creates a Super Admin. See
 [hostinger-deployment.md](hostinger-deployment.md#8-create-the-first-administrator).
 
 Running it a second time writes nothing: it finds the organisation and says

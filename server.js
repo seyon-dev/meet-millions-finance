@@ -311,6 +311,56 @@ export async function start() {
     }
 
     const { app, env } = await createServer();
+
+    // Demonstration data, for the same reason AUTO_MIGRATE exists: a managed
+    // host may give you no shell, so `npm run seed` is not something you can
+    // run. Without this there is no way to get the demonstration organisation
+    // onto such a deployment at all.
+    //
+    // Off by default, and refuses the repository's published password on a
+    // production database — the demonstration set includes a Super Admin who
+    // can see every organisation, so seeding it behind a password anyone can
+    // read hands the platform to whoever has read this repository.
+    // scripts/seed-guard.mjs decides; the same rule the CLI uses.
+    if (String(process.env.SEED_DEMO ?? 'false') === 'true') {
+      const { decideSeed } = await import('./scripts/seed-guard.mjs');
+      const decision = decideSeed({ argv: [], env: process.env });
+
+      if (!decision.allowed) {
+        // Not fatal: the application works, it simply has no demonstration
+        // data. Refusing to listen over this would take a working deployment
+        // down for the sake of sample rows.
+        console.warn('  seed       refused — ' + decision.message.split('\n')[0]);
+        console.warn('  seed       set DEMO_PASSWORD, or SEED_DEMO_ACCEPT_RISK=true, and restart.');
+      } else {
+        try {
+          // The catalogue first. Demonstration data provisions a tenant, which
+          // assigns its owner the `admin` role — and roles are seeded by the
+          // bootstrap, which does not run until the first request arrives.
+          // This block runs before the server listens, so on a database that
+          // has never served a request the roles are simply not there yet and
+          // the insert fails on a null role_id. Both are idempotent.
+          const { ensureBootstrapped } = await import('./src/services/bootstrap.js');
+          await ensureBootstrapped(env);
+
+          const { seedDemoData } = await import('./scripts/seed-demo.mjs');
+          const result = await seedDemoData(env);
+          if (result.reused) {
+            console.log('  seed       the demonstration organisation is already here; nothing written');
+          } else {
+            console.log(`  seed       created — ${result.clients} clients, ${result.staff} staff`);
+            console.log(`  seed       sign in as ${result.email}`);
+            console.log(`  seed       platform owner ${result.platformEmail}`);
+            console.log('  seed       set SEED_DEMO=false and restart once you have signed in');
+          }
+        } catch (err) {
+          // Same judgement: sample data failing is not a reason to refuse
+          // every real request.
+          console.error('  seed       failed:', err?.message ?? err);
+        }
+      }
+    }
+
     const tasks = startScheduler(env);
 
     const server = app.listen(PORT, HOST, () => {

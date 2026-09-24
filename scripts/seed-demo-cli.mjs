@@ -22,7 +22,7 @@
 
 import { createMysqlBinding, closePool } from '../src/db/mysql.js';
 import { createFilesystemStorage } from '../src/storage/filesystem.js';
-import { seedDemoData, DEMO_PASSWORD } from './seed-demo.mjs';
+import { seedDemoData, PUBLISHED_DEMO_PASSWORD } from './seed-demo.mjs';
 import { decideSeed } from './seed-guard.mjs';
 
 const decision = decideSeed({ argv: process.argv.slice(2), env: process.env });
@@ -67,6 +67,6 @@ if (result.reused) {
 console.log('\n  Demonstration organisation created.\n');
 console.log(`    Practice owner   ${result.email}`);
 console.log(`    Super Admin      ${result.platformEmail}`);
-console.log(`    Password         ${passwordIsPublished ? DEMO_PASSWORD : '(the DEMO_PASSWORD you set)'}`);
+console.log(`    Password         ${passwordIsPublished ? PUBLISHED_DEMO_PASSWORD : '(the DEMO_PASSWORD you set)'}`);
 console.log(`\n    ${result.clients} client companies, ${result.staff} staff accounts.`);
 console.log('    Every account uses the same password. See docs/demo-accounts.md.\n');

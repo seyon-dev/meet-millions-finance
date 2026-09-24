@@ -23,7 +23,10 @@ const REFUSAL = [
 
 export function decideSeed({ argv = [], env = {} } = {}) {
   const dryRun = argv.includes('--check');
-  const accepted = argv.includes('--i-accept-the-risk');
+  // Two spellings of the same decision: a flag for the command line, an
+  // environment variable for the server's own startup path, which has no argv.
+  const accepted = argv.includes('--i-accept-the-risk')
+    || String(env.SEED_DEMO_ACCEPT_RISK ?? '') === 'true';
   const isProduction = env.NODE_ENV === 'production';
   const passwordIsPublished = !env.DEMO_PASSWORD;
 
