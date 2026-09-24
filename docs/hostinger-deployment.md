@@ -361,7 +361,7 @@ Visit each of these:
 
 | Address | What you should see |
 | --- | --- |
-| `https://your-domain/health` | `{"ok":true,...}` — the app is running |
+| `https://your-domain/health` | `{"success":true,"data":{"status":"ok",...}}` — the app is running |
 | `https://your-domain/ready` | JSON describing the setup |
 | `https://your-domain/` | The landing page |
 | `https://your-domain/login` | The sign-in screen |
@@ -415,7 +415,7 @@ configuration.
 | SMS | `MSG91_*` |
 | WhatsApp | `WHATSAPP_*` |
 | Payments | `RAZORPAY_*`, `STRIPE_*`, `CASHFREE_*`, `PHONEPE_*` |
-| Cloud calling | `TELEPHONY_PROVIDER` plus that provider's keys |
+| Cloud calling | the chosen provider's keys (`EXOTEL_*`, `TWILIO_*`, ...) |
 | Google / Microsoft | `GOOGLE_*`, `MS_GRAPH_*` |
 | Upload scanning | `VIRUS_SCAN_URL` |
 

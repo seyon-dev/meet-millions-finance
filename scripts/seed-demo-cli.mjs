@@ -37,7 +37,10 @@ if (!decision.allowed) fail(decision.message);
 
 if (dryRun) {
   console.log('\n  --check: nothing was written.');
-  console.log(`  Target:   ${process.env.MYSQL_DATABASE ?? '(MYSQL_DATABASE not set)'} on ${process.env.MYSQL_HOST ?? '(MYSQL_HOST not set)'}`);
+  // DB_NAME / DB_HOST are what src/db/mysql.js reads. This line used to
+  // print MYSQL_* — names nothing in this codebase uses — so a correctly
+  // configured deployment was told its database was "not set".
+  console.log(`  Target:   ${process.env.DB_NAME ?? '(DB_NAME not set)'} on ${process.env.DB_HOST ?? '(DB_HOST not set)'}`);
   console.log(`  Password: ${passwordIsPublished ? 'the repository default — set DEMO_PASSWORD to override' : 'from DEMO_PASSWORD'}\n`);
   process.exit(0);
 }

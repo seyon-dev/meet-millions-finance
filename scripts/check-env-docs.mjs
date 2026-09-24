@@ -39,9 +39,18 @@ async function* walk(dir) {
 /** Where each key is read, so a failure names a file rather than a symbol. */
 async function collectUsed() {
   const used = new Map();
-  for await (const file of walk(join(root, 'src'))) {
+  // server.js is the production entry point — its process.env reads (PORT,
+  // TRUST_PROXY_HOPS, MAX_BODY_BYTES, ...) must be documented like any other.
+  const files = [join(root, 'server.js')];
+  for await (const file of walk(join(root, 'src'))) files.push(file);
+  for (const file of files) {
     const text = await readFile(file, 'utf8');
     const rel = file.slice(root.length + 1);
+
+    // `process.env.FOO` — the entry point reads the environment directly.
+    for (const m of text.matchAll(/\bprocess\.env\.([A-Z][A-Z0-9_]{2,})\b/g)) {
+      if (!used.has(m[1])) used.set(m[1], rel);
+    }
 
     // `env.FOO` and `this.env.FOO` — the direct read.
     for (const m of text.matchAll(/\benv\.([A-Z][A-Z0-9_]{2,})\b/g)) {

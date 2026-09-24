@@ -1,4 +1,9 @@
-# Deployment
+# Deployment — legacy Cloudflare target
+
+> **The production deployment is Hostinger managed Node.js + MySQL — see
+> [hostinger-deployment.md](hostinger-deployment.md).** This page documents
+> the original Cloudflare Workers target, kept working behind `legacy:`
+> npm scripts for anyone still running it.
 
 From an empty Cloudflare account to a running deployment.
 
@@ -17,7 +22,7 @@ npx wrangler r2 bucket create meetmillions-crm-documents-preview
 ```
 
 `d1 create` prints a `database_id`. Paste it into `wrangler.jsonc` in place of
-`REPLACE_WITH_D1_DATABASE_ID`. **Do not invent one** — `npm run deploy` refuses
+`REPLACE_WITH_D1_DATABASE_ID`. **Do not invent one** — `npm run legacy:deploy` refuses
 to run while the placeholder is there, and an id that is merely well-formed but
 wrong fails at the first request rather than at deploy time.
 
@@ -66,10 +71,10 @@ a deployment stops half way through.
 
 ```bash
 npm run check      # build checks and the full test suite
-npm run deploy     # preflight, then wrangler deploy
+npm run legacy:deploy     # preflight, then wrangler deploy
 ```
 
-`npm run deploy` runs `scripts/preflight-deploy.mjs` first. It refuses to deploy
+`npm run legacy:deploy` runs `scripts/preflight-deploy.mjs` first. It refuses to deploy
 when a binding still carries a placeholder or an all-zero resource id, and when
 the Worker name in `wrangler.jsonc` is not the name the Cloudflare project
 expects. `wrangler deploy --dry-run` does **not** catch either — it validates the
@@ -77,7 +82,7 @@ shape of the configuration, not the resources it points at, and a missing
 `database_id` passes it. Run the preflight on its own with:
 
 ```bash
-npm run deploy:check
+npm run legacy:deploy:check
 ```
 
 Nothing is created or changed when it stops.
@@ -91,10 +96,10 @@ deploy` locally, set the commands in **Workers & Pages → the Worker → Settin
 | Setting | Value |
 | --- | --- |
 | Build command | `npm run build` |
-| Deploy command | `npm run deploy` |
+| Deploy command | `npm run legacy:deploy` |
 
 **The deploy command matters.** Cloudflare's default is `npx wrangler deploy`,
-which skips `npm run deploy` and with it the preflight — so a placeholder
+which skips `npm run legacy:deploy` and with it the preflight — so a placeholder
 `database_id` survives a green build and fails at the Cloudflare API with
 
 ```

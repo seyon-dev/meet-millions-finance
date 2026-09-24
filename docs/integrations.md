@@ -72,8 +72,10 @@ Two rules the payment code holds to:
 ## Telephony
 
 Seven providers behind one `TelephonyProvider` interface: click-to-call, call
-masking, IVR, recording, voicemail, live status and webhook events. Provider
-choice is `TELEPHONY_PROVIDER`; nothing else in the application names a vendor.
+masking, IVR, recording, voicemail, live status and webhook events. The
+provider is chosen per organisation in Settings (the `telephony.provider`
+setting, `exotel` by default); the environment only supplies each vendor's
+credentials.
 
 Recordings are stored in R2 under the tenant's own prefix, with a retention
 window applied by the daily job.

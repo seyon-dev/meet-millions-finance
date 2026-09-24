@@ -40,13 +40,18 @@ looks like production is how somebody ends up filing it.
 ### Against MySQL, as production runs
 
 ```bash
-cp .env.example .env                # fill in DB_* and STORAGE_ROOT
-npm run migrate                     # create the tables
-npm start                           # http://localhost:3000
+cp .env.example .env                       # fill in DB_* and STORAGE_ROOT
+node --env-file=.env scripts/migrate-mysql.mjs   # create the tables
+node --env-file=.env server.cjs            # http://localhost:3000
 ```
 
-`npm start` runs `node server.js`, which serves the application over Express
-with MySQL and filesystem storage in place of the development stand-ins.
+Nothing in the application reads a `.env` file by itself — on managed hosting
+the panel injects the variables, and locally Node's own `--env-file` flag does
+it. A bare `npm start` works when the variables are already in the
+environment.
+
+`server.cjs` serves the application over Express with MySQL and filesystem
+storage in place of the development stand-ins.
 
 **On Hostinger the entry file is `server.cjs`, not `server.js`.** Hostinger's
 runtime loads the entry with `require()`, which cannot load an ESM module;

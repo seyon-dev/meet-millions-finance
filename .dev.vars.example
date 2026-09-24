@@ -65,6 +65,16 @@ STORAGE_ROOT=/home/USERNAME/mm-storage
 # Run ONE instance with this on. Default false.
 AUTO_MIGRATE=false
 
+# How many proxies sit in front of this process. Hostinger's managed Node.js
+# is one hop; put a CDN in front later and it becomes two. This is what makes
+# the client address the application rate-limits and audits a real one.
+TRUST_PROXY_HOPS=1
+
+# The largest request body the server accepts, in bytes. 52428800 (50MB) sits
+# just above the 50MB document upload limit; anything larger is refused with
+# a 413 before it can occupy memory.
+MAX_BODY_BYTES=52428800
+
 # ---- Demonstration data (optional) -----------------------------------------
 # SEED_DEMO=true creates an invented practice — five client companies, a month
 # of documents — at startup, for managed hosting where `npm run seed` cannot be
@@ -99,9 +109,9 @@ DEMO_MODE=true
 # nothing here; this is for the white-label custom-domain case and the public
 # API. "*" allows any origin — do not use it in production.
 CORS_ORIGINS=
-# Session lifetime and inactivity cut-off. An organisation can tighten both in
-# Settings → Security; these are the deployment defaults.
-SESSION_TTL_HOURS=12
+# Deployment-wide inactivity cut-off, in minutes (0 disables it). Each
+# organisation also has its own idle timeout in Settings -> Security;
+# whichever of the two is stricter signs an idle session out.
 IDLE_TIMEOUT_MINUTES=60
 # How long the tamper-evident audit trail and backups are kept. 2555 days is
 # seven years, which is the Indian statutory retention period.
@@ -142,7 +152,6 @@ MSG91_DLT_TE_ID=
 
 # ---- WhatsApp — Meta WhatsApp Cloud API ------------------------------------
 WHATSAPP_PHONE_NUMBER_ID=
-WHATSAPP_BUSINESS_ACCOUNT_ID=
 WHATSAPP_ACCESS_TOKEN=
 WHATSAPP_VERIFY_TOKEN=
 WHATSAPP_APP_SECRET=
@@ -151,9 +160,6 @@ WHATSAPP_APP_SECRET=
 FCM_PROJECT_ID=
 FCM_CLIENT_EMAIL=
 FCM_PRIVATE_KEY=
-APNS_KEY_ID=
-APNS_TEAM_ID=
-APNS_PRIVATE_KEY=
 
 # ---- Meta Lead Ads — Graph API ---------------------------------------------
 META_APP_ID=
@@ -164,9 +170,6 @@ META_LEADGEN_VERIFY_TOKEN=
 # ---- Google (Sheets / Forms / Drive / Calendar / Vision / Speech) ----------
 GOOGLE_OAUTH_CLIENT_ID=
 GOOGLE_OAUTH_CLIENT_SECRET=
-GOOGLE_OAUTH_REDIRECT_URI=https://app.meetmillionscrm.in/api/integrations/google/callback
-GOOGLE_SERVICE_ACCOUNT_EMAIL=
-GOOGLE_SERVICE_ACCOUNT_KEY=
 GOOGLE_VISION_API_KEY=
 GOOGLE_SPEECH_API_KEY=
 
@@ -174,12 +177,10 @@ GOOGLE_SPEECH_API_KEY=
 MS_GRAPH_CLIENT_ID=
 MS_GRAPH_CLIENT_SECRET=
 MS_GRAPH_TENANT_ID=
-MS_GRAPH_REDIRECT_URI=https://app.meetmillionscrm.in/api/integrations/microsoft/callback
 
 # ---- Dropbox ----------------------------------------------------------------
 DROPBOX_APP_KEY=
 DROPBOX_APP_SECRET=
-DROPBOX_REDIRECT_URI=https://app.meetmillionscrm.in/api/integrations/dropbox/callback
 
 # ---- LLM — Claude API (Anthropic): GST assistant, insights, call AI --------
 ANTHROPIC_API_KEY=
@@ -203,14 +204,12 @@ PHONEPE_SALT_KEY=
 PHONEPE_SALT_INDEX=1
 
 # ---- e-Sign — Digio / Leegality (Aadhaar e-Sign + DSC) ---------------------
-ESIGN_PROVIDER=digio
 DIGIO_CLIENT_ID=
 DIGIO_CLIENT_SECRET=
 LEEGALITY_AUTH_TOKEN=
 ESIGN_WEBHOOK_SECRET=
 
 # ---- Cloud Telephony — Exotel default; 7 providers supported ---------------
-TELEPHONY_PROVIDER=exotel
 EXOTEL_SID=
 EXOTEL_API_KEY=
 EXOTEL_API_TOKEN=
@@ -224,8 +223,6 @@ PLIVO_AUTH_TOKEN=
 PLIVO_CALLER_ID=
 KNOWLARITY_API_KEY=
 KNOWLARITY_SR_NUMBER=
-# Knowlarity channel identifier, when the account uses more than one.
-KNOWLARITY_CHANNEL=
 MYOPERATOR_API_KEY=
 MYOPERATOR_COMPANY_ID=
 RINGCENTRAL_CLIENT_ID=
@@ -243,4 +240,3 @@ TELEPHONY_WEBHOOK_SECRET=
 # ---- White Label — Cloudflare API for custom domain automation -------------
 CLOUDFLARE_API_TOKEN=
 CLOUDFLARE_ZONE_ID=
-CLOUDFLARE_ACCOUNT_ID=
