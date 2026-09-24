@@ -16,7 +16,7 @@
  */
 
 import mysql from 'mysql2/promise';
-import { toMysql } from './dialect.js';
+import { toMysqlParams } from './dialect.js';
 
 /**
  * Configuration, read from the environment.
@@ -82,14 +82,17 @@ const RETRYABLE = new Set([
 ]);
 
 async function execute(conn, sql, params) {
-  const translated = toMysql(sql);
+  // Both halves together: `?1` becomes `?` in the text AND the bound values
+  // expand to one per occurrence — see toMysqlParams for why text alone would
+  // send two parameters to a statement that now expects six.
+  const { sql: translated, params: bound } = toMysqlParams(sql, params);
   try {
-    return await conn.execute(translated, params);
+    return await conn.execute(translated, bound);
   } catch (err) {
     if (!RETRYABLE.has(err?.code)) throw err;
     // One retry. A deadlock or a dropped pooled connection is transient; a
     // second failure is real and must surface rather than loop.
-    return conn.execute(translated, params);
+    return conn.execute(translated, bound);
   }
 }
 

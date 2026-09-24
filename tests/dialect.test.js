@@ -15,7 +15,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { toMysql, quoteReservedIdentifiers, RESERVED, SCHEMA_RESERVED } from '../src/db/dialect.js';
+import { toMysql, toMysqlParams, quoteReservedIdentifiers, RESERVED, SCHEMA_RESERVED } from '../src/db/dialect.js';
 
 describe('reserved identifiers', () => {
   test('quotes the statement GET /ready runs, which used to be a 1064', () => {
@@ -125,5 +125,67 @@ describe('SQLite constructs MySQL has no equivalent for', () => {
 
   test('a backquoted table name works too', () => {
     assert.match(toMysql('PRAGMA table_info(`users`)'), /table_name = 'users'/);
+  });
+});
+
+describe('placeholders and literals', () => {
+  test('a numbered placeholder expands to one bound value per occurrence', () => {
+    const r = toMysqlParams(
+      'SELECT (SELECT COUNT(*) FROM a WHERE t=?1) x, (SELECT COUNT(*) FROM b WHERE t=?1 AND m=?2) y',
+      ['TEN', 'MONTH']);
+    assert.equal((r.sql.match(/\?/g) ?? []).length, 3, 'three occurrences, three anonymous marks');
+    assert.deepEqual(r.params, ['TEN', 'TEN', 'MONTH'],
+      'SQLite bound two values; MySQL needs one per occurrence, in occurrence order');
+    assert.doesNotMatch(r.sql, /\?\d/, 'no numbered form survives');
+  });
+
+  test('a statement without numbers passes its params through untouched', () => {
+    const r = toMysqlParams('SELECT * FROM t WHERE a = ? AND b = ?', [1, 2]);
+    assert.deepEqual(r.params, [1, 2]);
+  });
+
+  test('mixing bare ? with ?N is refused rather than silently misbound', () => {
+    assert.throws(() => toMysqlParams('SELECT * FROM t WHERE a = ? AND b = ?1', [1]),
+      /mixes bare/);
+  });
+
+  test('?2 inside a string literal is data, not a placeholder', () => {
+    const r = toMysqlParams("SELECT * FROM t WHERE a = ?1 AND note = 'what is ?2'", ['x']);
+    assert.deepEqual(r.params, ['x']);
+    assert.match(r.sql, /'what is \?2'/);
+  });
+
+  test('referencing a parameter that was never bound is an error', () => {
+    assert.throws(() => toMysqlParams('SELECT * FROM t WHERE a = ?3', ['only-one']),
+      /references \?3/);
+  });
+
+  test("ESCAPE '\\' reaches MySQL with its backslash doubled", () => {
+    // SQLite stores the backslash as-is; MySQL reads it as the start of an
+    // escape, so the single-backslash form was an unterminated string and a
+    // 1064 on every list search box.
+    const out = toMysql("SELECT * FROM u WHERE LOWER(name) LIKE ? ESCAPE '\\'");
+    assert.match(out, /ESCAPE '\\\\'/);
+  });
+
+  test('a backslash literal does not derail quoting for the rest of the statement', () => {
+    const out = toMysql("SELECT * FROM t WHERE a LIKE ? ESCAPE '\\' AND key = ?");
+    assert.match(out, /`key` = \?/, 'the reserved word after the literal is still seen and quoted');
+  });
+});
+
+describe('strftime code mapping', () => {
+  test('%W becomes MySQL week-of-year, not the weekday name', () => {
+    // DATE_FORMAT('2026-09-24', '%Y-W%W') is "2026-WThursday" — every weekly
+    // report bucket was silently a weekday label. %u is the Monday-first week.
+    assert.match(toMysql("SELECT strftime('%Y-W%W', day) FROM t"), /'%Y-W%u'/);
+  });
+
+  test('%M becomes minutes, because MySQL %M is the month name', () => {
+    assert.match(toMysql("SELECT strftime('%H:%M', t) FROM x"), /'%H:%i'/);
+  });
+
+  test('a code with no faithful MySQL counterpart refuses loudly', () => {
+    assert.throws(() => toMysql("SELECT strftime('%s', x) FROM t"), /no DATE_FORMAT mapping/);
   });
 });

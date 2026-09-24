@@ -133,7 +133,8 @@ export class TenantScope {
     for (const [k, v] of Object.entries(where)) w.eqIf(k, v);
     const orderBy = order ?? await this.defaultOrder(table);
     return this.db.many(
-      `SELECT ${columns} FROM ${ident(table)} ${w.sql} ORDER BY ${orderBy} LIMIT ?`,
+      `SELECT ${columns} FROM ${ident(table)} ${w.sql}`
+      + `${orderBy ? ` ORDER BY ${orderBy}` : ''} LIMIT ?`,
       [...w.params, limit]);
   }
 
@@ -141,7 +142,12 @@ export class TenantScope {
     for (const column of ['created_at', 'updated_at']) {
       if (await this.db.hasColumn(table, column)) return `${column} DESC`;
     }
-    return 'rowid';
+    // Every id in this system is a ULID, so the primary key sorts by creation
+    // time anyway. The old fallback was SQLite's implicit `rowid`, a column
+    // MySQL does not have — eleven tables carry neither timestamp, and
+    // listing any of them this way would have been an Unknown column there.
+    if (await this.db.hasColumn(table, 'id')) return 'id DESC';
+    return null;
   }
 
   async count(table, where = {}) {

@@ -24,19 +24,31 @@ function ident(name) {
   return parts.join('.');
 }
 
-/** Wrap a D1 failure so a unique-constraint clash becomes a 409, not a 500. */
+/**
+ * Wrap a database failure so a unique-constraint clash becomes a 409, not a
+ * 500 — whichever engine raised it.
+ *
+ * SQLite speaks in message text; MySQL speaks in error numbers. Matching only
+ * the SQLite phrases meant that on production MySQL every duplicate, missing
+ * reference and refused CHECK fell through to the generic 500 — a second
+ * submit of the same form read as "something went wrong on our side" instead
+ * of "that already exists".
+ */
 function translate(err, sql) {
   const msg = String(err?.message || err);
-  if (/UNIQUE constraint failed/i.test(msg)) {
-    const field = /UNIQUE constraint failed:\s*([^\s)]+)/i.exec(msg)?.[1] ?? null;
+  const errno = Number(err?.errno ?? 0);
+
+  if (/UNIQUE constraint failed/i.test(msg) || errno === 1062) {
+    const field = /UNIQUE constraint failed:\s*([^\s)]+)/i.exec(msg)?.[1]
+      ?? /for key '([^']+)'/i.exec(msg)?.[1] ?? null;
     return new ConflictError('That record already exists.', field ? { field } : null);
   }
-  if (/FOREIGN KEY constraint failed/i.test(msg)) {
+  if (/FOREIGN KEY constraint failed/i.test(msg) || errno === 1451 || errno === 1452) {
     return new AppError('A referenced record is missing or still in use.', {
       status: 409, code: 'foreign_key_violation', expose: true,
     });
   }
-  if (/CHECK constraint failed/i.test(msg)) {
+  if (/CHECK constraint failed/i.test(msg) || errno === 4025 || errno === 3819) {
     return new AppError('That value is not allowed for this field.', {
       status: 422, code: 'check_constraint', expose: true,
     });

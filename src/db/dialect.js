@@ -86,10 +86,13 @@ export function quoteReservedIdentifiers(sql, words = SCHEMA_RESERVED) {
     const ch = text[i];
 
     // A string literal or an already-quoted identifier: copy it verbatim.
+    // The source dialect is SQLite, where a backslash inside a literal is
+    // just a backslash — only doubling ('') escapes a quote. Treating \ as
+    // an escape here made `ESCAPE '\'` swallow its closing quote and this
+    // walker mis-read everything after it.
     if (ch === "'" || ch === '"' || ch === '`') {
       let j = i + 1;
       while (j < text.length) {
-        if (text[j] === '\\') { j += 2; continue; }        // \' escape
         if (text[j] === ch) {
           if (text[j + 1] === ch) { j += 2; continue; }      // '' escape
           break;
@@ -183,10 +186,14 @@ export function toMysql(sql) {
     'ON DUPLICATE KEY UPDATE id = id');
   out = out.replace(/\bexcluded\.([a-zA-Z_][\w]*)/g, 'VALUES($1)');
 
-  // Date formatting. SQLite's strftime and MySQL's DATE_FORMAT share the
-  // same % codes for the patterns used here.
-  out = out.replace(/\bstrftime\s*\(\s*('(?:[^']*)')\s*,\s*([^)]+)\)/gi,
-    (_, fmt, expr) => `DATE_FORMAT(${expr.trim()}, ${fmt})`);
+  // Date formatting. The % codes are NOT the same language: SQLite's %W is
+  // week-of-year and %M is minutes, while MySQL's %W is the weekday's NAME
+  // and %M the month's — DATE_FORMAT(day, '%Y-W%W') came back as
+  // "2026-WThursday" and every weekly report bucket was silently wrong.
+  // Each code is mapped explicitly, and one this table does not know is an
+  // error rather than a guess.
+  out = out.replace(/\bstrftime\s*\(\s*'([^']*)'\s*,\s*([^)]+)\)/gi,
+    (_, fmt, expr) => `DATE_FORMAT(${expr.trim()}, '${sqliteFormatToMysql(fmt)}')`);
 
   // SQLite's IS / IS NOT work on any value; MySQL restricts IS to
   // TRUE/FALSE/NULL/UNKNOWN, so `x IS ?` has to become the null-safe
@@ -195,16 +202,197 @@ export function toMysql(sql) {
   // `IS NOT ?` would need `NOT (x <=> ?)`. It appears nowhere in this
   // codebase, so rather than carry an untested rewrite this refuses it and
   // says so — a wrong translation here silently changes which rows match.
-  if (/\bIS\s+NOT\s+\?/i.test(out)) {
-    throw new Error('`IS NOT ?` has no translation here. Write `NOT (col <=> ?)` instead.');
-  }
-  out = out.replace(/([\w`.]+)\s+IS\s+\?/gi, '$1 <=> ?');
+  //
+  // Outside literals only: a note whose text happens to contain "is ?" is
+  // data, and this rule rewrote it — the translator must never edit values.
+  out = mapOutsideLiterals(out, (chunk) => {
+    if (/\bIS\s+NOT\s+\?/i.test(chunk)) {
+      throw new Error('`IS NOT ?` has no translation here. Write `NOT (col <=> ?)` instead.');
+    }
+    return chunk
+      .replace(/([\w`.]+)\s+IS\s+\?/gi, '$1 <=> ?')
+      // Identifier quoting: SQLite accepts "x", MySQL wants `x` unless
+      // ANSI_QUOTES is set, which is not the default on Hostinger.
+      .replace(/"([a-zA-Z_][\w]*)"/g, '`$1`');
+  });
 
-  // Identifier quoting: SQLite accepts "x", MySQL wants `x` unless
-  // ANSI_QUOTES is set, which is not the default on Hostinger.
-  out = out.replace(/"([a-zA-Z_][\w]*)"/g, '`$1`');
+  // Backslashes inside string literals. SQLite stores them as-is; MySQL, with
+  // its default sql_mode, treats a backslash in a literal as the start of an
+  // escape — so `LIKE ? ESCAPE '\'` arrived as an unterminated string and a
+  // 1064 on every list search box. Doubling them says the same thing to MySQL
+  // that the original said to SQLite.
+  out = doubleBackslashesInLiterals(out);
 
   return out;
+}
+
+/**
+ * Apply a rewrite to everything except string literals.
+ *
+ * The rules that take no surrounding context — `IS ?`, `"x"` quoting — are
+ * plain regexes, and a plain regex cannot tell a column from the inside of a
+ * note somebody typed. This slices the statement at literal boundaries, hands
+ * only the SQL between them to the rewrite, and reassembles.
+ */
+function mapOutsideLiterals(sql, fn) {
+  let out = '';
+  let chunk = '';
+  let i = 0;
+  while (i < sql.length) {
+    const ch = sql[i];
+    if (ch === "'" || ch === '`') {
+      out += fn(chunk);
+      chunk = '';
+      let j = i + 1;
+      while (j < sql.length) {
+        if (sql[j] === ch) { if (sql[j + 1] === ch) { j += 2; continue; } break; }
+        j += 1;
+      }
+      out += sql.slice(i, j + 1);
+      i = j + 1;
+      continue;
+    }
+    chunk += ch;
+    i += 1;
+  }
+  return out + fn(chunk);
+}
+
+/**
+ * SQLite strftime codes → MySQL DATE_FORMAT codes.
+ *
+ * Only the codes with a faithful MySQL counterpart are here. %s (epoch
+ * seconds) and %f (fractional seconds) have no DATE_FORMAT equivalent, so a
+ * query that needs one has to be written differently — loudly, not silently.
+ */
+const STRFTIME_TO_DATEFORMAT = new Map([
+  ['%Y', '%Y'],  // 4-digit year
+  ['%m', '%m'],  // month 01-12
+  ['%d', '%d'],  // day 01-31
+  ['%H', '%H'],  // hour 00-23
+  ['%M', '%i'],  // MINUTES - MySQL %M is the month name
+  ['%S', '%s'],  // seconds
+  ['%j', '%j'],  // day of year
+  ['%W', '%u'],  // week of year, Monday-first - MySQL %W is the weekday name
+  ['%w', '%w'],  // weekday 0-6, Sunday = 0
+  ['%%', '%%'],
+]);
+
+function sqliteFormatToMysql(fmt) {
+  return fmt.replace(/%./g, (code) => {
+    const mapped = STRFTIME_TO_DATEFORMAT.get(code);
+    if (mapped === undefined) {
+      throw new Error(`strftime code ${code} has no DATE_FORMAT mapping here; `
+        + 'add it to STRFTIME_TO_DATEFORMAT with its MySQL meaning checked, not assumed.');
+    }
+    return mapped;
+  });
+}
+
+/** Double \ inside single-quoted literals, leaving everything else alone. */
+function doubleBackslashesInLiterals(sql) {
+  let out = '';
+  let i = 0;
+  while (i < sql.length) {
+    const ch = sql[i];
+    if (ch === "'") {
+      let j = i + 1;
+      while (j < sql.length) {
+        if (sql[j] === "'") {
+          if (sql[j + 1] === "'") { j += 2; continue; }
+          break;
+        }
+        j += 1;
+      }
+      out += "'" + sql.slice(i + 1, j).replace(/\\/g, '\\\\') + "'";
+      i = j + 1;
+      continue;
+    }
+    // Backticked identifiers and double-quoted spans carry no backslashes in
+    // this codebase, but skipping them keeps the walk honest.
+    if (ch === '`' || ch === '"') {
+      let j = i + 1;
+      while (j < sql.length && sql[j] !== ch) j += 1;
+      out += sql.slice(i, j + 1);
+      i = j + 1;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
+/**
+ * Numbered placeholders.
+ *
+ * SQLite lets a statement say `?1` and reuse it: the parameter is bound once
+ * and referenced five times, so a dashboard query takes [tenantId, month]
+ * rather than repeating tenantId per subquery. MySQL has only the anonymous
+ * `?`, where every occurrence consumes the next array entry — so the same
+ * statement needs both the text rewritten and the parameter array expanded,
+ * one entry per occurrence, in occurrence order.
+ *
+ * Text alone is not enough, which is why this returns the params too: a
+ * statement with `?1` five times and `?2` once arrives with two bound values
+ * and must leave with six.
+ *
+ * Mixing bare `?` with `?N` in one statement is refused. SQLite gives the two
+ * forms an interaction subtle enough (bare takes the next unused number) that
+ * a silent translation would be a place for parameters to land one column off
+ * — the kind of wrong that corrupts quietly instead of failing loudly.
+ */
+export function toMysqlParams(sql, params = []) {
+  const text = toMysql(sql);
+
+  let out = '';
+  const order = [];
+  let bare = 0;
+  let i = 0;
+
+  while (i < text.length) {
+    const ch = text[i];
+    // Literals and quoted identifiers pass through whole, so a '?' inside a
+    // string stays exactly what it was. SQLite literals escape quotes only by
+    // doubling; a backslash is data, never an escape.
+    if (ch === "'" || ch === '"' || ch === '`') {
+      let j = i + 1;
+      while (j < text.length) {
+        if (text[j] === ch) {
+          if (text[j + 1] === ch) { j += 2; continue; }
+          break;
+        }
+        j += 1;
+      }
+      out += text.slice(i, j + 1);
+      i = j + 1;
+      continue;
+    }
+    if (ch === '?') {
+      let j = i + 1;
+      while (j < text.length && text[j] >= '0' && text[j] <= '9') j += 1;
+      if (j > i + 1) {
+        order.push(Number(text.slice(i + 1, j)));
+      } else {
+        bare += 1;
+      }
+      out += '?';
+      i = j;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+
+  if (order.length === 0) return { sql: out, params };
+  if (bare > 0) {
+    throw new Error('A statement mixes bare ? with numbered ?N placeholders; use one form throughout.');
+  }
+  const max = Math.max(...order);
+  if (params.length < max) {
+    throw new Error(`The statement references ?${max} but only ${params.length} parameter(s) were bound.`);
+  }
+  return { sql: out, params: order.map(n => params[n - 1]) };
 }
 
 /**
