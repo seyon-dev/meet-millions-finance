@@ -353,8 +353,14 @@ async function changePlan(catalogue, subscription, reload, preselect = null) {
 
   try {
     const { data } = await api.post('/billing/subscription/change-plan', payload);
-    notify.success(`Now on ${data.subscription?.planName ?? payload.planKey}.`);
-    if (data.note) notify.warning(data.note, { title: 'Worth knowing' });
+    // The response carries { plan: {key, name}, invoice, entitlements } — the
+    // old read of data.subscription.planName never existed, so the toast
+    // showed the raw plan key instead of its name.
+    notify.success(`Now on ${data.plan?.name ?? payload.planKey}.`);
+    if (data.invoice) {
+      notify.info(`Invoice ${data.invoice.invoiceNumber ?? ''} has been raised for the new plan.`.replace('  ', ' '),
+        { title: 'Billing' });
+    }
     // Entitlements changed, so the navigation and gates must be re-read.
     await session.load();
     await reload();

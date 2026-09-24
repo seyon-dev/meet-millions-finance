@@ -10,11 +10,13 @@
 import { el, render } from './core/dom.js';
 import * as router from './core/router.js';
 import * as session from './core/session.js';
-import { onSessionLost } from './core/api.js';
-import { notify } from './core/ui.js';
+import { api, onSessionLost, onStepUpRequired } from './core/api.js';
+import { notify, promptText } from './core/ui.js';
 
 const PUBLIC_PATHS = new Set([
-  '/', '/login', '/register', '/forgot-password', '/reset-password', '/verify-2fa', '/accept-invite',
+  // No '/accept-invite': nothing registers that route and no email carries
+  // that link — invitations send a temporary password and point at /login.
+  '/', '/login', '/register', '/forgot-password', '/reset-password', '/verify-2fa',
 ]);
 
 const root = document.getElementById('mm-app');
@@ -33,6 +35,31 @@ async function boot() {
     const here = window.location.pathname + window.location.search;
     notify.warning('Your session has ended. Please sign in again.');
     router.go(`/login?next=${encodeURIComponent(here)}`, { replace: true });
+  });
+
+  // A sensitive action can ask for a fresh identity check ("step-up"). One
+  // shared prompt satisfies it, and the request that hit the wall replays.
+  onStepUpRequired(async () => {
+    const enrolled = !!session.session().user?.twoFactorEnabled;
+    const value = await promptText({
+      title: 'Confirm it is you',
+      message: enrolled
+        ? 'This action needs a fresh check. Enter the 6-digit code from your authenticator app.'
+        : 'This action needs a fresh check. Enter your password to continue.',
+      label: enrolled ? 'Authentication code' : 'Password',
+      confirmLabel: 'Confirm',
+      multiline: false,
+      inputType: enrolled ? 'text' : 'password',
+      maxlength: enrolled ? 10 : 256,
+    });
+    if (!value) return false;
+    try {
+      await api.post('/auth/2fa/step-up', enrolled ? { code: value } : { password: value });
+      return true;
+    } catch (err) {
+      notify.error(err?.message || 'That could not be verified.');
+      return false;
+    }
   });
 
   try {

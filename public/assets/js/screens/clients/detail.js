@@ -331,7 +331,10 @@ async function edit(client, reload) {
       const contactEmail = el('input.mm-input', { type: 'email', value: client.contactEmail ?? '' });
       const contactPhone = el('input.mm-input', { type: 'tel', value: client.contactPhone ?? '' });
       const status = el('select.mm-select',
-        ...['active', 'onboarding', 'paused', 'archived'].map(s => el('option', {
+        // Exactly the states the API accepts and the table constrains —
+        // 'onboarding' and 'paused' were on this list once, and choosing
+        // either turned Save into a validation error.
+        ...['active', 'inactive', 'at_risk', 'churned', 'archived'].map(s => el('option', {
           value: s, selected: s === client.status, text: fmt.label(s),
         })));
       const sla = el('input.mm-input', { type: 'number', min: '1', max: '720', value: String(client.slaHours ?? 48) });
@@ -348,9 +351,12 @@ async function edit(client, reload) {
           }
           close({
             displayName: displayName.value.trim(),
-            contactName: contactName.value.trim() || undefined,
-            contactEmail: contactEmail.value.trim() || undefined,
-            contactPhone: contactPhone.value.trim() || undefined,
+            // The API reads primaryContact* on writes (it answers with the
+            // short contact* names on reads). Sending the short names here
+            // meant every edit to the contact fields was silently dropped.
+            primaryContactName: contactName.value.trim() || undefined,
+            primaryContactEmail: contactEmail.value.trim() || undefined,
+            primaryContactPhone: contactPhone.value.trim() || undefined,
             status: status.value,
             slaHours: Number(sla.value) || undefined,
             notes: notes.value.trim() || undefined,

@@ -35,7 +35,7 @@ export default async function automationScreen() {
       const { data, meta } = await api.get('/automation', { pageSize: 100 });
       triggers = meta.triggers ?? triggers;
       actionTypes = meta.actionTypes ?? actionTypes;
-      render(listHost, rulesCard(data ?? [], load));
+      render(listHost, rulesCard(data ?? [], load, () => ({ triggers, actionTypes })));
     } catch (err) {
       if (err.name === 'FeatureLocked') {
         render(page,
@@ -68,7 +68,7 @@ export default async function automationScreen() {
   return page;
 }
 
-function rulesCard(rules, reload) {
+function rulesCard(rules, reload, context) {
   if (!rules.length) {
     return emptyState({
       title: 'No rules yet',
@@ -124,6 +124,14 @@ function rulesCard(rules, reload) {
                 button('Preview', {
                   variant: 'ghost', size: 'sm',
                   onClick: () => preview(rule),
+                }),
+                button('Edit', {
+                  size: 'xs', variant: 'ghost',
+                  // The editor always supported editing — modal title, PATCH
+                  // path, prefilled fields — but nothing on the screen called
+                  // it with an existing rule, so the only way to change one
+                  // was to delete it and start again.
+                  onClick: () => openRule(rule, context, reload),
                 }),
                 button(rule.isActive ? 'Pause' : 'Resume', {
                   variant: 'ghost', size: 'sm',

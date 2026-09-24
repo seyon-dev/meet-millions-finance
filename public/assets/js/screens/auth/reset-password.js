@@ -9,7 +9,7 @@ import { el, render } from '../../core/dom.js';
 import { api } from '../../core/api.js';
 import * as router from '../../core/router.js';
 import { button, notify } from '../../core/ui.js';
-import { authLayout, field, formError, formNotice, passwordMeter } from './layout.js';
+import { authLayout, field, formError, formNotice, passwordMeter, passwordInput } from './layout.js';
 
 export default async function resetPasswordScreen({ query }) {
   const token = query.get('token');
@@ -29,12 +29,11 @@ export default async function resetPasswordScreen({ query }) {
   const errorHost = el('div');
   const formHost = el('div');
 
-  const password = el('input.mm-input', {
-    type: 'password', id: 'mm-password', required: true,
-    autocomplete: 'new-password', autofocus: true,
+  const { box: passwordBox, input: password } = passwordInput({
+    id: 'mm-password', autocomplete: 'new-password', autofocus: true,
   });
-  const confirm = el('input.mm-input', {
-    type: 'password', id: 'mm-confirm', required: true, autocomplete: 'new-password',
+  const { box: confirmBox, input: confirm } = passwordInput({
+    id: 'mm-confirm', autocomplete: 'new-password',
   });
 
   const submit = button('Set new password', { variant: 'primary', type: 'submit' });
@@ -78,10 +77,10 @@ export default async function resetPasswordScreen({ query }) {
   },
     errorHost,
     field({
-      label: 'New password', id: 'mm-password', input: password, required: true,
+      label: 'New password', id: 'mm-password', input: passwordBox, required: true,
       below: passwordMeter(password),
     }),
-    field({ label: 'Confirm new password', id: 'mm-confirm', input: confirm, required: true }),
+    field({ label: 'Confirm new password', id: 'mm-confirm', input: confirmBox, required: true }),
     submit,
     el('p.mm-auth__foot', el('a.mm-link', { href: '/login', text: 'Back to sign in' })));
 

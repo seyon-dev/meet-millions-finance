@@ -498,7 +498,7 @@ export class KnowlarityProvider extends TelephonyProvider {
       key: 'knowlarity',
       name: 'Knowlarity',
       requiredKeys: ['KNOWLARITY_API_KEY', 'KNOWLARITY_SR_NUMBER'],
-      optionalKeys: ['KNOWLARITY_CHANNEL', 'TELEPHONY_WEBHOOK_SECRET'],
+      optionalKeys: ['TELEPHONY_WEBHOOK_SECRET'],
       env,
       docsUrl: 'https://developer.knowlarity.com/',
     });

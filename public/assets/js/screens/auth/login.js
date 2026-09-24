@@ -12,7 +12,7 @@ import { api, setToken } from '../../core/api.js';
 import * as session from '../../core/session.js';
 import * as router from '../../core/router.js';
 import { notify, notifyError, button } from '../../core/ui.js';
-import { authLayout, field, formError } from './layout.js';
+import { authLayout, field, formError, passwordInput } from './layout.js';
 
 export default async function loginScreen({ query }) {
   const next = query.get('next');
@@ -23,8 +23,8 @@ export default async function loginScreen({ query }) {
     type: 'email', name: 'email', id: 'mm-email', required: true,
     autocomplete: 'username', placeholder: 'you@firm.example', autofocus: true,
   });
-  const passwordInput = el('input.mm-input', {
-    type: 'password', name: 'password', id: 'mm-password', required: true,
+  const { box: passwordBox, input: passwordField } = passwordInput({
+    name: 'password', id: 'mm-password',
     autocomplete: 'current-password', placeholder: 'Your password',
   });
 
@@ -38,7 +38,7 @@ export default async function loginScreen({ query }) {
       if (busy) return;
 
       const email = emailInput.value.trim();
-      const password = passwordInput.value;
+      const password = passwordField.value;
       if (!email || !password) {
         errorHost.replaceChildren(formError('Enter your email address and password.'));
         return;
@@ -69,8 +69,8 @@ export default async function loginScreen({ query }) {
         router.go(next || data.landing || session.landingPath(), { replace: true });
       } catch (err) {
         errorHost.replaceChildren(formError(messageFor(err)));
-        passwordInput.value = '';
-        passwordInput.focus();
+        passwordField.value = '';
+        passwordField.focus();
       } finally {
         busy = false;
         submit.disabled = false;
@@ -82,7 +82,7 @@ export default async function loginScreen({ query }) {
     field({ label: 'Email address', input: emailInput, id: 'mm-email' }),
     field({
       label: 'Password',
-      input: passwordInput,
+      input: passwordBox,
       id: 'mm-password',
       action: el('a.mm-link.mm-text-xs', { href: '/forgot-password', text: 'Forgot password?' }),
     }),

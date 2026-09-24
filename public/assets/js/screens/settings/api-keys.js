@@ -239,7 +239,10 @@ async function createKey(reload) {
       description: 'Copy it now. It is not stored in a form anybody can read, including us.',
       dismissible: false,
       body: ({ close }) => frag(
-        el('pre.mm-code.mm-code--key', { text: data.key ?? data.apiKey ?? '' }),
+        // data.key is the key's METADATA; the one-time secret is data.secret.
+        // Reading data.key here printed "[object Object]" as the key —
+        // and that is also what the Copy button put on the clipboard.
+        el('pre.mm-code.mm-code--key', { text: data.secret ?? '' }),
         el('p.mm-muted.mm-text-xs.mm-mt-2', {
           text: `${payload.name} · ${fmt.plural(payload.scopes.length, 'scope')} · ${payload.rateLimitPerMin} requests a minute`,
         }),
@@ -247,7 +250,7 @@ async function createKey(reload) {
           el('button.mm-btn.mm-btn--ghost', {
             type: 'button', text: 'Copy',
             onClick: () => {
-              navigator.clipboard?.writeText(data.key ?? data.apiKey ?? '');
+              navigator.clipboard?.writeText(data.secret ?? '');
               notify.success('Copied.');
             },
           }),

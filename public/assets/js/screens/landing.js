@@ -63,6 +63,40 @@ const ROLES = [
   ['Client', 'Their own documents, queries, reports and invoices'],
 ];
 
+/**
+ * The pricing cards.
+ *
+ * A hand-written mirror of src/data/plans.js, because this file is served to
+ * the browser and that one is not. tests/landing-content.test.js compares the
+ * two and fails the build if a price or bullet drifts.
+ */
+const PRICING = [
+  { key: 'basic', name: 'Basic', price: 'Free', per: '', tagline: 'For solo practitioners getting started',
+    bullets: ['1 User', '1 Company', '5GB Storage', 'Basic Upload', 'Email Support'] },
+  { key: 'standard', name: 'Standard', price: '₹2,999', per: '/month', tagline: 'For growing firms managing multiple clients', popular: true,
+    bullets: ['5 Users', '5 Companies', '50GB Storage', 'Unlimited Uploads', 'GST Reports', 'Payment Tracking', 'Manager Approval', 'Email + Chat Support'] },
+  { key: 'pro', name: 'Pro', price: '₹7,999', per: '/month', tagline: 'For established firms at scale',
+    bullets: ['Unlimited Users', 'Unlimited Companies', '500GB Storage', 'OCR + AI Precheck', 'WhatsApp Integration', 'API Access', 'Advanced Reports', 'Priority Support'] },
+  { key: 'enterprise', name: 'Enterprise', price: 'Custom', per: '', tagline: 'For networks and franchises',
+    bullets: ['Everything in Pro', 'White Label', 'Franchise Management', 'Dedicated Support', 'Custom Terms'] },
+];
+
+/** Questions people actually ask, answered from what the product does. */
+const FAQ = [
+  ['Do my clients get their own sign-in?',
+   'Yes. Every client company gets portal accounts that see only their own documents, queries, reports and invoices — nothing from any other client, enforced on the server.'],
+  ['Does Meet Millions file returns for us?',
+   'No. It runs the month up to filing: collection, verification, GST and TDS computation, client sign-off and billing. You file with your usual tools, with every number evidenced.'],
+  ['What happens to integrations we have not set up?',
+   'They say Not Connected until you add credentials. Nothing shows a green tick over something nobody configured.'],
+  ['Can we try it before paying?',
+   'The Basic plan is free for a solo practice, and Standard starts with a 14-day trial. Creating an organisation takes about two minutes.'],
+  ['Who can see what inside the firm?',
+   'Seven roles, from the partner who sees everything to the auditor who can read but never touch. Access is enforced on the server on every request, not by hiding buttons.'],
+  ['Is there an audit trail?',
+   'Every approval, edit and sign-off is recorded in a hash-chained audit log with who and when, anchored nightly.'],
+];
+
 export default async function landingScreen() {
   return el('div.mm-landing',
     el('div.mm-landing__bg', { 'aria-hidden': 'true' },
@@ -84,7 +118,9 @@ export default async function landingScreen() {
         el('nav.mm-landing__navlinks',
           el('a', { href: '#how', text: 'How it works' }),
           el('a', { href: '#platform', text: 'Platform' }),
-          el('a', { href: '#roles', text: 'Roles' })),
+          el('a', { href: '#roles', text: 'Roles' }),
+          el('a', { href: '#pricing', text: 'Pricing' }),
+          el('a', { href: '#faq', text: 'FAQ' })),
         el('div.mm-landing__navcta',
           el('a.mm-btn.mm-btn--ghost', { href: '/login', text: 'Sign in' }),
           el('a.mm-btn.mm-btn--primary', { href: '/register', text: 'Create an organisation' })))),
@@ -165,6 +201,46 @@ export default async function landingScreen() {
           el('span.mm-landing__role-name', { text: name }),
           el('span.mm-landing__role-what', { text: what }))))),
 
+    // ---- Pricing ----------------------------------------------------------
+    el('section.mm-landing__section', { id: 'pricing' },
+      el('div.mm-landing__head',
+        el('p.mm-landing__kicker', { text: 'Pricing' }),
+        el('h2.mm-landing__h2', { text: 'Start free, grow when the practice does' })),
+      el('div.mm-landing__plans',
+        ...PRICING.map((plan, i) => el('article.mm-landing__plan', {
+          class: plan.popular ? 'mm-landing__plan--popular' : '', style: `--i:${i}`,
+        },
+          plan.popular ? el('span.mm-landing__plan-flag', { text: 'Most popular' }) : null,
+          el('h3.mm-landing__plan-name', { text: plan.name }),
+          el('p.mm-landing__plan-price',
+            el('span.mm-landing__plan-amount', { text: plan.price }),
+            plan.per ? el('span.mm-landing__plan-per', { text: plan.per }) : null),
+          el('p.mm-landing__plan-tag', { text: plan.tagline }),
+          el('ul.mm-landing__plan-list',
+            ...plan.bullets.map(b => el('li',
+              el('span.mm-landing__plan-tick', { 'aria-hidden': 'true' }, icon('check', { size: 'sm' })),
+              el('span', { text: b })))),
+          el('a.mm-btn.mm-btn--block', {
+            class: plan.popular ? 'mm-btn--primary' : 'mm-btn--outline',
+            href: '/register',
+            text: plan.key === 'enterprise' ? 'Talk to us' : 'Create your organisation',
+          })))),
+      el('p.mm-landing__plan-note', {
+        text: 'Prices exclude GST. Annual billing gets two months free. Add-on modules are priced separately in the marketplace.',
+      })),
+
+    // ---- FAQ ----------------------------------------------------------------
+    el('section.mm-landing__section', { id: 'faq' },
+      el('div.mm-landing__head',
+        el('p.mm-landing__kicker', { text: 'FAQ' }),
+        el('h2.mm-landing__h2', { text: 'The questions practices ask first' })),
+      el('div.mm-landing__faq',
+        ...FAQ.map(([q, a]) => el('details.mm-landing__qa',
+          el('summary.mm-landing__q',
+            el('span', { text: q }),
+            el('span.mm-landing__q-mark', { 'aria-hidden': 'true' }, icon('chevron-down', { size: 'sm' }))),
+          el('p.mm-landing__a', { text: a }))))),
+
     // ---- Close ------------------------------------------------------------
     el('section.mm-landing__close',
       el('h2.mm-landing__h2', { text: 'Start with one filing month' }),
@@ -179,5 +255,8 @@ export default async function landingScreen() {
       el('span', { text: 'Meet Millions Finance CRM' }),
       el('span.mm-landing__foot-links',
         el('a', { href: '/login', text: 'Sign in' }),
-        el('a', { href: '/register', text: 'Create an organisation' }))));
+        el('a', { href: '/register', text: 'Create an organisation' }),
+        // The same door with the same lock: platform staff authenticate on
+        // the ordinary sign-in form and their role decides what opens.
+        el('a', { href: '/login', text: 'Super Admin' }))));
 }

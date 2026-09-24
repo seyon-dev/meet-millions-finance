@@ -103,7 +103,13 @@ let modalHost = null;
 
 function ensureModalHost() {
   if (!modalHost) {
-    modalHost = el('div.mm-modal-host');
+    // Born hidden. The host is a fixed, full-viewport layer; the [hidden]
+    // rule in components.css was always written for it, but nothing ever
+    // toggled the attribute — so after the first dialog closed, an empty
+    // invisible layer sat over the whole application and swallowed every
+    // click from then on. Keyboard users could carry on, which is exactly
+    // why it survived: the app looked alive and was dead to the mouse.
+    modalHost = el('div.mm-modal-host', { hidden: true });
     document.body.append(modalHost);
   }
   return modalHost;
@@ -130,7 +136,10 @@ export function modal({
       releaseTrap();
       document.removeEventListener('keydown', onKey);
       wrap.remove();
-      if (!host.children.length) document.body.classList.remove('mm-scroll-lock');
+      if (!host.children.length) {
+        document.body.classList.remove('mm-scroll-lock');
+        host.hidden = true;
+      }
       previouslyFocused?.focus?.();
       resolve(value);
     };
@@ -165,6 +174,7 @@ export function modal({
       if (e.key === 'Escape' && dismissible) { e.preventDefault(); close(null); }
     };
 
+    host.hidden = false;
     host.append(wrap);
     document.body.classList.add('mm-scroll-lock');
     document.addEventListener('keydown', onKey);
@@ -237,6 +247,7 @@ export function confirm({
 export function promptText({
   title, message = null, label = 'Reason', placeholder = '', confirmLabel = 'Save',
   required = true, multiline = true, tone = 'primary', maxlength = 2000, value = '',
+  inputType = 'text',
 }) {
   return modal({
     title,
@@ -244,7 +255,7 @@ export function promptText({
     body: ({ close }) => {
       const input = multiline
         ? el('textarea.mm-input.mm-textarea', { rows: '4', placeholder, maxlength: String(maxlength), value })
-        : el('input.mm-input', { type: 'text', placeholder, maxlength: String(maxlength), value });
+        : el('input.mm-input', { type: inputType, placeholder, maxlength: String(maxlength), value });
 
       const errorHost = el('div');
       const form = el('form.mm-form', {

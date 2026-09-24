@@ -546,6 +546,21 @@
 /* The password strength meter reads as part of the field it belongs to. */
 .mm-auth .mm-meter { margin-top: calc(var(--mm-space-1) * -1); }
 
+/* ---- Password visibility toggle ------------------------------------------
+   The button lives inside the field's box, so the input needs room for it on
+   the right — otherwise long passwords type underneath the icon. */
+.mm-passbox { position: relative; display: block; }
+.mm-passbox .mm-input { width: 100%; padding-right: 46px; }
+.mm-passbox__toggle {
+  position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--mm-text-tertiary); cursor: pointer;
+  transition: color var(--mm-dur-fast) var(--mm-ease-out), background var(--mm-dur-fast) var(--mm-ease-out);
+}
+.mm-passbox__toggle:hover { color: var(--mm-text-primary); background: var(--mm-bg-hover); }
+.mm-passbox__toggle:focus-visible { outline: 2px solid var(--mm-primary); outline-offset: 1px; }
+
 /* On a phone the story side is hidden, so the form gets the whole screen and
    the type comes down a step to suit the narrower measure. */
 @media (max-width: 560px) {

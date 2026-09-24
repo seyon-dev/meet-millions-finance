@@ -85,15 +85,25 @@ export function getToken() {
 /** The shell registers here so any 401 anywhere lands on the sign-in screen. */
 export function onSessionLost(handler) { onUnauthenticated = handler; }
 
+let onStepUp = null;
+
+/**
+ * The shell registers a prompt here that re-confirms the person's identity
+ * (POST /auth/2fa/step-up). When a request comes back 401 twofa_required with
+ * `stepUp`, the prompt runs and the original request replays once.
+ */
+export function onStepUpRequired(handler) { onStepUp = handler; }
+
 /**
  * Issue a request.
  *
  * `body` may be a plain object (sent as JSON) or FormData (sent as-is, so the
  * browser sets its own multipart boundary).
  */
-export async function request(path, {
-  method = 'GET', body = null, query = null, signal = null, raw = false,
-} = {}) {
+export async function request(path, options = {}) {
+  const {
+    method = 'GET', body = null, query = null, signal = null, raw = false,
+  } = options;
   const url = new URL(path.startsWith('http') ? path : BASE + path, window.location.origin);
   if (query) {
     for (const [key, value] of Object.entries(query)) {
@@ -140,7 +150,13 @@ export async function request(path, {
   try { envelope = text ? JSON.parse(text) : null; } catch { envelope = null; }
 
   if (!response.ok || envelope?.success === false) {
-    throw fromEnvelope(response.status, envelope);
+    const error = fromEnvelope(response.status, envelope);
+    if (error instanceof TwoFactorRequired && error.details?.stepUp
+        && onStepUp && !options.noStepUpRetry) {
+      const confirmed = await onStepUp(error);
+      if (confirmed) return request(path, { ...options, noStepUpRetry: true });
+    }
+    throw error;
   }
   return { data: envelope?.data ?? null, meta: envelope?.meta ?? {} };
 }
@@ -161,12 +177,15 @@ function fromEnvelope(status, envelope) {
   };
   const message = error.message ?? defaultMessage(status);
 
+  // Checked before the generic 401 branch: a step-up challenge means the
+  // session is alive and asking for confirmation — signing the person out
+  // for it would throw away their work.
+  if (meta.code === 'twofa_required') return new TwoFactorRequired(message, meta);
   if (status === 401) {
     const err = new AuthError(message, meta);
     if (onUnauthenticated) onUnauthenticated(err);
     return err;
   }
-  if (meta.code === 'twofa_required') return new TwoFactorRequired(message, meta);
   if (meta.code === 'feature_locked') return new FeatureLocked(message, meta);
   if (meta.code === 'integration_not_configured') return new NotConfigured(message, meta);
   if (status === 422 || meta.code === 'validation_failed') return new ValidationError(message, meta);

@@ -35,7 +35,7 @@ export default async function builderScreen() {
         pageHead({ title: 'Report builder' }),
         lockedState({
           featureName: 'The report builder',
-          requiredAddOn: 'advanced_analytics_dashboard',
+          requiredAddOn: 'advanced_analytics',
           message: 'Build your own reports across clients, documents, invoices and filings.',
         }));
       return page;
@@ -44,6 +44,7 @@ export default async function builderScreen() {
     return page;
   }
 
+  const savedHost = el('div.mm-mt-4');
   const state = {
     dataset: catalogue.datasets[0]?.key ?? null,
     fields: [],
@@ -216,7 +217,7 @@ export default async function builderScreen() {
     render(resultHost, skeletonTable(8, state.fields.length));
     try {
       const { data } = await api.post('/analytics/query', payload());
-      render(resultHost, resultCard(data, payload));
+      render(resultHost, resultCard(data, payload, paintSaved));
     } catch (err) {
       render(resultHost, errorState(err, { onRetry: run }));
     }
@@ -235,6 +236,67 @@ export default async function builderScreen() {
     };
   }
 
+  /**
+   * Saved reports.
+   *
+   * Saving promised "it can be re-run" while nothing anywhere listed what had
+   * been saved — the promise pointed at a screen that did not exist. This is
+   * that screen's missing half: the saved queries, each loading back into the
+   * builder and running.
+   */
+  async function paintSaved() {
+    try {
+      const { data } = await api.get('/analytics/dashboards');
+      const saved = (data.dashboards ?? []).filter(d => d.widgets?.[0]?.query);
+      if (!saved.length) { render(savedHost, null); return; }
+
+      render(savedHost, card({
+        title: 'Saved reports',
+        flush: true,
+        body: el('ul.mm-list',
+          ...saved.map(d => el('li.mm-list__row',
+            el('span.mm-list__icon.mm-c-brand', icon('file-text', { size: 'sm' })),
+            el('div.mm-list__main',
+              el('span.mm-fw-medium', { text: d.name }),
+              el('span.mm-muted.mm-text-xs', {
+                text: `${d.widgets[0].query.dataset} · saved ${fmt.relative(d.createdAt ?? d.created_at)}`,
+              })),
+            el('div.mm-row.mm-gap-1',
+              button('Run', {
+                size: 'xs', variant: 'ghost',
+                onClick: () => {
+                  const q = d.widgets[0].query;
+                  Object.assign(state, {
+                    dataset: q.dataset,
+                    fields: q.fields ?? [],
+                    filters: q.filters ?? [],
+                    groupBy: q.groupBy ?? null,
+                    aggregate: q.aggregate ?? null,
+                    orderBy: q.orderBy ?? null,
+                    orderDir: q.orderDir ?? 'desc',
+                    limit: q.limit ?? 200,
+                  });
+                  paintForm();
+                  run();
+                },
+              }),
+              button('Delete', {
+                size: 'xs', variant: 'ghost',
+                onClick: async () => {
+                  try {
+                    await api.delete(`/analytics/dashboards/${d.id}`);
+                    notify.success('Deleted.');
+                    paintSaved();
+                  } catch (err) { notifyError(err); }
+                },
+              }))))),
+      }));
+    } catch {
+      // The saved list is a convenience; the builder works without it.
+      render(savedHost, null);
+    }
+  }
+
   page.replaceChildren();
   page.append(
     pageHead({
@@ -243,14 +305,15 @@ export default async function builderScreen() {
       actions: button('Trends', { variant: 'ghost', icon: 'bar-chart', href: '/analytics' }),
     }),
     formHost,
+    savedHost,
     resultHost);
 
   paintForm();
-  await run();
+  await Promise.all([run(), paintSaved()]);
   return page;
 }
 
-function resultCard(data, payload) {
+function resultCard(data, payload, onSaved) {
   const columns = data.columns ?? [];
   const rows = data.rows ?? [];
 
@@ -262,9 +325,9 @@ function resultCard(data, payload) {
         variant: 'ghost', size: 'sm', icon: 'download',
         onClick: () => downloadCsv(payload()),
       }),
-      button('Save as a dashboard', {
+      button('Save this report', {
         variant: 'ghost', size: 'sm', icon: 'plus',
-        onClick: () => saveDashboard(payload()),
+        onClick: () => saveDashboard(payload(), onSaved),
       })),
     flush: true,
     body: frag(
@@ -330,10 +393,10 @@ async function downloadCsv(query) {
   }
 }
 
-async function saveDashboard(query) {
+async function saveDashboard(query, onSaved) {
   const name = await promptText({
     title: 'Save this report',
-    message: 'It is saved for you and can be re-run or scheduled.',
+    message: 'It appears under Saved reports on this screen, ready to re-run.',
     label: 'Name',
     placeholder: 'Clients with outstanding invoices',
     multiline: false,
@@ -348,7 +411,8 @@ async function saveDashboard(query) {
       name,
       widgets: [{ title: name, type: 'table', query }],
     });
-    notify.success('Saved. It is on your saved reports.');
+    notify.success('Saved. It is under Saved reports below.');
+    onSaved?.();
   } catch (err) {
     notifyError(err);
   }

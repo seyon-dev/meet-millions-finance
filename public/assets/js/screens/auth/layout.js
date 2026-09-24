@@ -98,6 +98,35 @@ export function field({ label, input, id, hint = null, action = null, required =
 }
 
 /**
+ * A password input with a visibility toggle.
+ *
+ * The toggle is a real button — keyboard reachable, labelled, and it says
+ * which state it is in — not a decorated span. It never submits the form.
+ */
+export function passwordInput(props = {}) {
+  const input = el('input.mm-input.mm-input--pass', {
+    type: 'password', required: true, ...props,
+  });
+  const toggle = el('button.mm-passbox__toggle', {
+    type: 'button',
+    'aria-label': 'Show password',
+    'aria-pressed': 'false',
+    onClick: () => {
+      const showing = input.type === 'text';
+      input.type = showing ? 'password' : 'text';
+      toggle.setAttribute('aria-pressed', String(!showing));
+      toggle.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+      toggle.replaceChildren(icon(showing ? 'eye' : 'eye-off', { size: 'sm' }));
+      input.focus();
+    },
+  }, icon('eye', { size: 'sm' }));
+
+  const box = el('div.mm-passbox', input, toggle);
+  // Callers keep talking to the input (value, focus); the box is layout.
+  return { box, input };
+}
+
+/**
  * A form-level error.
  *
  * role="alert" so it is announced the moment it appears: somebody using a

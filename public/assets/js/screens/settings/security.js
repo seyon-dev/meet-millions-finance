@@ -340,6 +340,22 @@ function adoptionCard(adoption) {
  * organisation has not set one, so the screen always shows what is actually
  * in force rather than a blank.
  */
+/** Stored column name → the name PATCH /settings/security validates. */
+const CAMEL = {
+  session_ttl_hours: 'sessionTtlHours',
+  idle_timeout_minutes: 'idleTimeoutMinutes',
+  password_min_length: 'passwordMinLength',
+  password_expiry_days: 'passwordExpiryDays',
+  max_failed_logins: 'maxFailedLogins',
+  lockout_minutes: 'lockoutMinutes',
+  enforce_2fa: 'enforce2fa',
+  password_require_mixed: 'passwordRequireMixed',
+  ip_allowlist_enabled: 'ipAllowlistEnabled',
+  device_approval: 'deviceApproval',
+  anomaly_alerts: 'anomalyAlerts',
+  step_up_for_sensitive: 'stepUpForSensitive',
+};
+
 function policyCard(data, reload) {
   const policy = { ...data.defaults, ...data.policy };
 
@@ -370,9 +386,14 @@ function policyCard(data, reload) {
       const submitButton = form.querySelector('button[type=submit]');
       submitButton.disabled = true;
 
+      // The API validates camelCase names; the rows this card reads are the
+      // stored snake_case columns. Sending the column names straight back —
+      // which this form used to do — meant validate() saw none of its fields
+      // and every save failed with "Nothing to update". The form never saved
+      // a policy, not once.
       const payload = {};
-      for (const key of Object.keys(fields)) payload[key] = Number(inputs[key].value);
-      for (const key of Object.keys(toggles)) payload[key] = inputs[key].checked;
+      for (const key of Object.keys(fields)) payload[CAMEL[key]] = Number(inputs[key].value);
+      for (const key of Object.keys(toggles)) payload[CAMEL[key]] = inputs[key].checked;
 
       try {
         await api.patch('/settings/security', payload);

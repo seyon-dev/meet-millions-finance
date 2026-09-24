@@ -107,8 +107,11 @@ export default async function callsScreen({ query }) {
   // close enough for a screen somebody is watching during a call.
   await paintLive();
   liveTimer = setInterval(paintLive, 5000);
+  // The router dispatches mm:teardown to the outgoing screen on navigation.
+  // The old extra listener on mm:navigated cleared this interval immediately
+  // — that event also fires for the navigation that loads this screen — so
+  // the "live" pane polled once and then quietly stopped being live.
   page.addEventListener('mm:teardown', () => clearInterval(liveTimer));
-  document.addEventListener('mm:navigated', () => clearInterval(liveTimer), { once: true });
 
   // ---- The tabbed lower half ---------------------------------------------
   function paintTabs() {

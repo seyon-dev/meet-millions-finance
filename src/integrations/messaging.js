@@ -207,7 +207,7 @@ export class WhatsAppProvider extends Provider {
       name: 'WhatsApp Cloud API',
       category: 'whatsapp',
       requiredKeys: ['WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_ACCESS_TOKEN'],
-      optionalKeys: ['WHATSAPP_BUSINESS_ACCOUNT_ID', 'WHATSAPP_VERIFY_TOKEN', 'WHATSAPP_APP_SECRET'],
+      optionalKeys: ['WHATSAPP_VERIFY_TOKEN', 'WHATSAPP_APP_SECRET'],
       env,
       docsUrl: 'https://developers.facebook.com/docs/whatsapp/cloud-api',
     });

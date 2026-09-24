@@ -1212,6 +1212,75 @@
 .mm-landing__role-name { font-weight: var(--mm-weight-semibold); font-size: var(--mm-text-md); }
 .mm-landing__role-what { font-size: var(--mm-text-sm); color: #8FA6CC; }
 
+/* ---- Pricing --------------------------------------------------------------
+   Four cards, one of them flagged. The popular card gets the border and the
+   lift; the others stay quiet so the recommendation reads at a glance. */
+.mm-landing__plans {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--mm-space-4); align-items: stretch;
+}
+@media (max-width: 1100px) { .mm-landing__plans { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px)  { .mm-landing__plans { grid-template-columns: 1fr; } }
+.mm-landing__plan {
+  position: relative; display: flex; flex-direction: column;
+  border: 1px solid rgba(148,178,255,0.12); border-radius: 16px;
+  background: linear-gradient(170deg, rgba(15,24,46,0.85), rgba(9,14,28,0.85));
+  padding: var(--mm-space-6) var(--mm-space-5);
+  animation: mm-auth-rise 0.6s cubic-bezier(0.22,1,0.36,1) calc(var(--i) * 0.06s) both;
+}
+.mm-landing__plan--popular {
+  border-color: rgba(122,164,255,0.45);
+  box-shadow: 0 24px 60px -30px rgba(47,107,255,0.55);
+}
+.mm-landing__plan-flag {
+  position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+  font-size: var(--mm-text-2xs); text-transform: uppercase; letter-spacing: var(--mm-tracking-caps);
+  color: #DCE7FF; background: linear-gradient(90deg, #2F6BFF, #22D3EE);
+  padding: 4px 12px; border-radius: 999px; white-space: nowrap;
+}
+.mm-landing__plan-name { font-family: var(--mm-font-display); font-size: var(--mm-text-lg); font-weight: var(--mm-weight-semibold); }
+.mm-landing__plan-price { margin-top: var(--mm-space-3); display: flex; align-items: baseline; gap: 4px; }
+.mm-landing__plan-amount {
+  font-family: var(--mm-font-display); font-size: var(--mm-text-3xl);
+  font-weight: var(--mm-weight-bold); letter-spacing: -0.02em;
+}
+.mm-landing__plan-per { color: var(--mm-text-tertiary); font-size: var(--mm-text-sm); }
+.mm-landing__plan-tag { margin-top: var(--mm-space-1); color: #9FB2D2; font-size: var(--mm-text-sm); min-height: 2.6em; }
+.mm-landing__plan-list {
+  list-style: none; margin: var(--mm-space-4) 0 var(--mm-space-5); padding: 0;
+  display: flex; flex-direction: column; gap: var(--mm-space-2);
+  font-size: var(--mm-text-sm); color: var(--mm-text-secondary); flex: 1;
+}
+.mm-landing__plan-list li { display: flex; align-items: center; gap: var(--mm-space-2); }
+.mm-landing__plan-tick { color: #6FE7F5; display: inline-flex; }
+.mm-landing__plan-note {
+  margin-top: var(--mm-space-5); text-align: center;
+  color: var(--mm-text-tertiary); font-size: var(--mm-text-sm);
+}
+
+/* ---- FAQ ------------------------------------------------------------------
+   Native <details>: open/close works with no script, with the keyboard, and
+   with a screen reader, and the chevron simply follows the state. */
+.mm-landing__faq { display: flex; flex-direction: column; gap: var(--mm-space-3); max-width: 760px; }
+.mm-landing__qa {
+  border: 1px solid rgba(148,178,255,0.12); border-radius: 12px;
+  background: rgba(13,21,40,0.72);
+}
+.mm-landing__q {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--mm-space-4);
+  padding: var(--mm-space-4) var(--mm-space-5);
+  cursor: pointer; list-style: none;
+  font-weight: var(--mm-weight-medium); color: var(--mm-text-primary);
+}
+.mm-landing__q::-webkit-details-marker { display: none; }
+.mm-landing__q:focus-visible { outline: 2px solid var(--mm-primary); outline-offset: 2px; border-radius: 12px; }
+.mm-landing__q-mark { color: var(--mm-text-tertiary); transition: transform var(--mm-dur-fast) var(--mm-ease-out); flex-shrink: 0; }
+.mm-landing__qa[open] .mm-landing__q-mark { transform: rotate(180deg); }
+.mm-landing__a {
+  padding: 0 var(--mm-space-5) var(--mm-space-4);
+  color: #9FB2D2; line-height: 1.65; max-width: 64ch;
+}
+
 /* ---- Close and footer ---------------------------------------------------- */
 .mm-landing__close {
   padding-block: var(--mm-space-9);

@@ -32,7 +32,7 @@ export default async function analyticsScreen() {
         pageHead({ title: 'Analytics' }),
         lockedState({
           featureName: 'Advanced analytics',
-          requiredAddOn: 'advanced_analytics_dashboard',
+          requiredAddOn: 'advanced_analytics',
           message: 'Trends across revenue, filings, team productivity and client health, with a report builder.',
         }));
       return page;

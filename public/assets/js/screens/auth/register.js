@@ -12,7 +12,7 @@ import { api } from '../../core/api.js';
 import * as session from '../../core/session.js';
 import * as router from '../../core/router.js';
 import { button } from '../../core/ui.js';
-import { authLayout, field, formError, passwordMeter } from './layout.js';
+import { authLayout, field, formError, passwordMeter, passwordInput } from './layout.js';
 
 export default async function registerScreen() {
   let step = 1;
@@ -35,7 +35,9 @@ export default async function registerScreen() {
   const fullName = input({ id: 'mm-name', autocomplete: 'name', placeholder: 'Asha Menon' });
   const email = input({ id: 'mm-email', type: 'email', autocomplete: 'email', placeholder: 'you@firm.example' });
   const phone = input({ id: 'mm-phone', type: 'tel', autocomplete: 'tel', placeholder: '98450 12233' });
-  const password = input({ id: 'mm-password', type: 'password', autocomplete: 'new-password' });
+  const { box: passwordBox, input: password } = passwordInput({
+    id: 'mm-password', autocomplete: 'new-password',
+  });
 
   // ---- Step 2: the practice -------------------------------------------------
   const orgName = input({ id: 'mm-org', placeholder: 'Meridian Tax Associates' });
@@ -55,7 +57,7 @@ export default async function registerScreen() {
       field({ label: 'Work email', id: 'mm-email', input: email, required: true }),
       field({ label: 'Mobile number', id: 'mm-phone', input: phone, required: true }),
       field({
-        label: 'Password', id: 'mm-password', input: password, required: true,
+        label: 'Password', id: 'mm-password', input: passwordBox, required: true,
         below: passwordMeter(password),
       }),
       blockButton('Continue'),

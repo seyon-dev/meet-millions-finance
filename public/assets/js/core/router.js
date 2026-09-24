@@ -114,7 +114,18 @@ export async function resolve() {
   try {
     const view = await loader({ params: current.params, query: query(), pathname });
     if (ticket !== token) return;              // superseded
-    if (view instanceof Node) outlet.replaceChildren(view);
+    if (view instanceof Node) {
+      // Tell the outgoing screen it is leaving, so intervals and listeners it
+      // holds can be released. Screens listened for this event already, but
+      // nothing ever dispatched it — the calls screen's live poll tried to
+      // clean up on an event that never came, fell back to mm:navigated, and
+      // that fires for the navigation that loads the screen too, so its
+      // five-second poll ran exactly once and then sat dead.
+      for (const child of [...outlet.children]) {
+        child.dispatchEvent(new CustomEvent('mm:teardown'));
+      }
+      outlet.replaceChildren(view);
+    }
   } catch (err) {
     if (ticket !== token) return;
     // Rendering the failure is the screen's job where it can; anything that
