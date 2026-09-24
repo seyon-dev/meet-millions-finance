@@ -74,7 +74,10 @@ const NAV = {
       { key: 'approvals',         label: 'Approvals',   path: '/approvals',         icon: 'clipboard-check',  permission: 'approvals.view', badge: 'pendingApprovals' },
       { key: 'team',              label: 'Team',        path: '/team',              icon: 'users',            permission: 'users.view', roles: ['finance_manager', 'admin', 'super_admin'] },
       { key: 'performance',       label: 'Performance', path: '/team/performance',  icon: 'trending-up',      permission: 'analytics.view', roles: ['finance_manager', 'admin', 'super_admin'] },
-      { key: 'revenue',           label: 'Revenue',     path: '/reports/revenue',   icon: 'indian-rupee',     permission: 'billing.view', roles: ['finance_manager', 'admin', 'super_admin'] },
+      // /reports/revenue was never a route — the SPA read it as report id
+      // "revenue" and showed a not-found. The payments ledger is the revenue
+      // view that exists, and it matches this item's billing.view permission.
+      { key: 'revenue',           label: 'Revenue',     path: '/billing/payments',  icon: 'indian-rupee',     permission: 'billing.view', roles: ['finance_manager', 'admin', 'super_admin'] },
     ],
   },
 

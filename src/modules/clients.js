@@ -9,11 +9,11 @@
  */
 
 import { createRouter } from '../http/router.js';
-import { ok, created, paginated } from '../http/response.js';
+import { ok, created, paginated, fileResponse } from '../http/response.js';
 import { BadRequestError, ForbiddenError, NotFoundError, ConflictError } from '../http/errors.js';
 import { Db, Where, safeOrder } from '../db/client.js';
 import { scopeFor } from '../db/tenancy.js';
-import { validate } from '../utils/validate.js';
+import { validate, escapeCsv } from '../utils/validate.js';
 import { ID } from '../utils/id.js';
 import { nowIso, monthKey, daysBetween } from '../utils/time.js';
 import { audit, auditAsync, recordActivity } from '../services/audit.js';
@@ -162,6 +162,63 @@ async function enrichClients(scope, rows) {
 // ---------------------------------------------------------------------------
 // Read one
 // ---------------------------------------------------------------------------
+/**
+ * The client book as a CSV.
+ *
+ * The list screen's Export button has pointed here since the screen was
+ * built; the route itself did not exist, so the button's only output was a
+ * 404. Same visibility rules as the list — an executive who sees only their
+ * assigned clients exports only their assigned clients.
+ */
+router.get('/export/csv', async (ctx) => {
+  const scope = scopeFor(ctx);
+
+  const where = scope.where('clients', 'c');
+  where.add('c.deleted_at IS NULL');
+  await applyClientVisibility(ctx, where, 'c.id');
+  where.eqIf('c.status', ctx.q('status'));
+  where.eqIf('c.assigned_executive_id', ctx.q('executiveId'));
+  where.searchIf(
+    ['c.display_name', 'c.client_code', 'c.primary_contact_name', 'c.primary_contact_email', 'c.primary_contact_phone'],
+    ctx.q('q'));
+
+  const rows = await scope.raw(
+    `SELECT c.display_name, c.client_code, c.status, c.onboarding_status,
+            c.primary_contact_name, c.primary_contact_email, c.primary_contact_phone,
+            co.gst_filing_frequency, c.sla_hours, c.created_at
+       FROM clients c
+       LEFT JOIN companies co ON co.id = c.company_id
+       ${where.sql} ORDER BY c.display_name ASC LIMIT 50000`,
+    where.params);
+
+  if (!rows.length) {
+    throw new BadRequestError('No clients match those filters, so there is nothing to export.');
+  }
+
+  const header = ['Client', 'Code', 'Status', 'Onboarding', 'Contact', 'Email', 'Phone',
+    'GST filing', 'SLA (hours)', 'Added'];
+  const lines = [header.map(escapeCsv).join(',')];
+  for (const r of rows) {
+    lines.push([
+      r.display_name, r.client_code ?? '', r.status, r.onboarding_status,
+      r.primary_contact_name ?? '', r.primary_contact_email ?? '', r.primary_contact_phone ?? '',
+      r.gst_filing_frequency ?? '', r.sla_hours ?? '', (r.created_at ?? '').slice(0, 10),
+    ].map(escapeCsv).join(','));
+  }
+
+  await audit(ctx, {
+    action: 'clients.exported', category: 'general', severity: 'notice',
+    entityType: 'client', entityId: null, entityLabel: `${rows.length} clients`,
+  });
+
+  // A BOM so Excel reads the file as UTF-8.
+  return fileResponse('\ufeff' + lines.join('\r\n'), {
+    contentType: 'text/csv; charset=utf-8',
+    fileName: `clients-${nowIso().slice(0, 10)}.csv`,
+    download: true,
+  });
+}, { anyPermission: ['clients.view', 'clients.view.assigned', 'clients.view.own'] });
+
 router.get('/:id', async (ctx) => {
   const scope = scopeFor(ctx);
   const client = await getVisibleClient(ctx, scope, ctx.params.id);

@@ -27,7 +27,11 @@ import { hashPassword } from '../auth/password.js';
  * tax rules change, so a deployed Worker re-seeds them on its next request
  * instead of waiting for somebody to remember.
  */
-export const BOOTSTRAP_VERSION = '1';
+// '2': the account.invited email template changed — the '1' text linked to a
+// page that does not exist through a placeholder nothing supplied. Bumping
+// re-runs the idempotent bootstrap once, which updates platform templates in
+// place and touches nothing else.
+export const BOOTSTRAP_VERSION = '2';
 
 /**
  * Memo of the databases already known to be seeded.

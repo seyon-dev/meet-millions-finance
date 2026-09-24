@@ -88,7 +88,10 @@ export function limitsFor(env, overrides = {}) {
   return {
     ...UPLOAD_LIMITS,
     maxBytes: Number.isFinite(envMax) && envMax > 0 ? envMax : UPLOAD_LIMITS.maxBytes,
-    allowedMime: [...new Set([...allowedMime, ...UPLOAD_LIMITS.allowedMime])],
+    // The operator's list, when one is set. This used to be a union with the
+    // defaults, so UPLOAD_ALLOWED_MIME could widen what a deployment accepts
+    // but never narrow it — the opposite of what a lockdown variable is for.
+    allowedMime: [...new Set(allowedMime)],
     ...overrides,
   };
 }
@@ -156,7 +159,11 @@ export async function signDownloadUrl(env, { key, tenantId, expiresInSeconds = 9
   if (!secret) throw new AppError('File signing is not configured.', { code: 'signing_unavailable' });
 
   const expires = addSeconds(expiresInSeconds);
-  const payload = `${tenantId}|${key}|${expires}|${disposition}`;
+  // The filename is part of what is signed: the name a browser saves under is
+  // as much the link's content as the bytes are, and a link whose name can be
+  // rewritten after signing is a link that can be made to say something its
+  // issuer never did.
+  const payload = `${tenantId}|${key}|${expires}|${disposition}|${fileName ?? ''}`;
   const signature = (await hmacSha256Hex(secret, payload)).slice(0, 40);
 
   const params = new URLSearchParams({ key, t: tenantId, e: expires, d: disposition, s: signature });
@@ -180,7 +187,9 @@ export async function verifySignedUrl(env, searchParams) {
     throw new ForbiddenError('That download link has expired. Open the document in the CRM to get a fresh one.');
   }
 
-  const expected = (await hmacSha256Hex(secret, `${tenantId}|${key}|${expires}|${disposition}`)).slice(0, 40);
+  const fileName = searchParams.get('n');
+  const expected = (await hmacSha256Hex(secret,
+    `${tenantId}|${key}|${expires}|${disposition}|${fileName ?? ''}`)).slice(0, 40);
   if (!timingSafeEqual(expected, signature)) {
     throw new ForbiddenError('That download link is not valid.');
   }
@@ -190,7 +199,7 @@ export async function verifySignedUrl(env, searchParams) {
     throw new ForbiddenError('That download link does not match its organisation.');
   }
 
-  return { key, tenantId, disposition, fileName: searchParams.get('n') };
+  return { key, tenantId, disposition, fileName };
 }
 
 /**

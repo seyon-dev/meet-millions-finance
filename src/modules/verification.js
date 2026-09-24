@@ -144,11 +144,16 @@ router.get('/stats', async (ctx) => {
     mine ? [ctx.tenantId, ctx.userId, today, nowIso()] : [ctx.tenantId, today, nowIso()]);
 
   // SLA compliance over the last 30 days, from the recorded decisions.
+  // The boundary is computed here and bound, not written as date('now',
+  // '-30 days') in the SQL: that form is SQLite's alone — MySQL answered it
+  // with a 1064 — and it also produces 'YYYY-MM-DD HH:MM:SS' where every
+  // timestamp in this schema is ISO-8601, so even on SQLite the comparison
+  // was against a subtly different shape. A bound ISO string is both.
   const sla = await scope.rawOne(
     `SELECT COUNT(*) AS total, SUM(CASE WHEN sla_met = 1 THEN 1 ELSE 0 END) AS met
        FROM verification_records
-      WHERE tenant_id = ? AND created_at >= date('now','-30 days')
-        AND decision IN ('approved','rejected')`, [ctx.tenantId]);
+      WHERE tenant_id = ? AND created_at >= ?
+        AND decision IN ('approved','rejected')`, [ctx.tenantId, addDays(-30)]);
 
   const total = Number(sla?.total) || 0;
   const met = Number(sla?.met) || 0;

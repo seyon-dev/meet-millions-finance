@@ -927,7 +927,10 @@ export const CLOUD_CALLING_MODULE = {
   ],
   userRoles: ['admin', 'finance_manager', 'finance_executive', 'accountant', 'client'],
   apisRequired: ['Cloud Telephony Provider API', 'Call Recording Storage API', 'Speech-to-Text API', 'LLM API'],
-  providerKeys: ['TELEPHONY_PROVIDER', 'EXOTEL_SID', 'EXOTEL_API_KEY', 'EXOTEL_API_TOKEN'],
+  // No TELEPHONY_PROVIDER here: nothing reads it to pick a provider — the
+  // workspace selects Exotel/Knowlarity per tenant — and listing it made the
+  // integrations screen tell operators to set a variable that does nothing.
+  providerKeys: ['EXOTEL_SID', 'EXOTEL_API_KEY', 'EXOTEL_API_TOKEN'],
   businessBenefit: 'Nothing discussed on a call is ever lost to memory — every conversation is recorded, transcribed, summarised and scored.',
   bestPlan: 'Pro / Enterprise',
   bestPlanKeys: ['pro', 'enterprise'],

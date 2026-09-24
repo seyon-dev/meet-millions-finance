@@ -164,7 +164,9 @@ router.get('/', async (ctx) => {
       title: r.full_name,
       subtitle: [r.job_title, r.email].filter(Boolean).join(' · '),
       badge: r.status,
-      path: `/users/${r.id}`,
+      // The SPA registers /settings/users/:id; /users/:id is nothing, so a
+      // person found in search led to the not-found screen.
+      path: `/settings/users/${r.id}`,
     })));
   }
 

@@ -81,7 +81,11 @@ export const DEFAULT_TEMPLATES = [
   ['account.registered', 'email', 'Welcome to {{appName}}',
     'Hello {{name}},\n\nYour organisation "{{organisation}}" is set up on {{appName}}.\n\nNext steps:\n1. Turn on two-factor authentication\n2. Complete your company profile (GSTIN, PAN, TAN)\n3. Invite your team\n\n{{appUrl}}'],
   ['account.invited', 'email', 'You have been invited to {{organisation}}',
-    'Hello {{name}},\n\n{{inviterName}} has invited you to join {{organisation}} on {{appName}} as {{roleName}}.\n\nAccept the invitation: {{inviteUrl}}\n\nThis link expires in {{expiresIn}}.'],
+    // The flow sends a temporary password and a sign-in link — there is no
+    // separate acceptance page. The old text promised an {{inviteUrl}} no
+    // caller supplied, and unknown placeholders render as empty, so the
+    // invitation went out with a blank where its link should have been.
+    'Hello {{name}},\n\n{{inviterName}} has invited you to join {{organisation}} on {{appName}} as {{roleName}}.\n\nSign in at {{loginUrl}} with this email address and the temporary password below. You will be asked to choose your own password straight away.\n\nTemporary password: {{temporaryPassword}}\n\nIf you were not expecting this invitation, you can ignore this email.'],
   ['account.password_reset', 'email', 'Reset your {{appName}} password',
     'Hello {{name}},\n\nUse the link below to set a new password. It expires in {{expiresIn}}.\n\n{{resetUrl}}\n\nIf you did not request this, you can safely ignore this email — your password has not changed.'],
   ['security.login_anomaly', 'email', 'New sign-in to your {{appName}} account',

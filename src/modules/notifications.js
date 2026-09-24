@@ -267,7 +267,7 @@ router.delete('/preferences', async (ctx) => {
   const result = await db.run(
     'DELETE FROM notification_preferences WHERE tenant_id = ? AND user_id = ?',
     [ctx.tenantId, ctx.userId]);
-  return ok({ cleared: result.meta?.changes ?? 0 }, { ctx });
+  return ok({ cleared: result?.changes ?? 0 }, { ctx });
 }, { auth: true });
 
 // ---------------------------------------------------------------------------

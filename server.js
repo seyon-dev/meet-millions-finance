@@ -28,6 +28,7 @@ import express from 'express';
 import compression from 'compression';
 import cron from 'node-cron';
 import { readFileSync, existsSync } from 'node:fs';
+import { Transform } from 'node:stream';
 import { join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -104,14 +105,57 @@ function toWebRequest(req) {
     else headers.set(key, String(value));
   }
 
+  // The caller's address is decided here, by Express's trust-proxy logic,
+  // and stamped into the one header the Worker reads first. Whatever arrived
+  // in that header from outside is dropped — on Cloudflare the edge set it,
+  // but here nothing upstream vouches for it, and rate limits, lockouts,
+  // allow-lists and audit rows all key on this value.
+  headers.delete('cf-connecting-ip');
+  headers.delete('x-real-ip');
+  if (req.ip) headers.set('cf-connecting-ip', req.ip);
+
   const hasBody = !['GET', 'HEAD'].includes(req.method);
+
+  // A ceiling on the request body, enforced before anything buffers it. The
+  // application's own upload limit is 25MB per file; anything past this is
+  // nobody's legitimate request, and without the check a single oversized
+  // POST would be read into memory in full before any handler said no.
+  const maxBody = Number(process.env.MAX_BODY_BYTES ?? 64 * 1024 * 1024);
+  const declared = Number(req.headers['content-length'] ?? 0);
+  if (declared > maxBody) {
+    const err = new Error(`Request body of ${declared} bytes exceeds the ${maxBody}-byte limit.`);
+    err.statusCode = 413;
+    throw err;
+  }
+  // The undeclared / lying case is counted in-line. This must be a Transform
+  // the body flows THROUGH, not a 'data' listener on the side: a listener
+  // switches the socket into flowing mode before the Request has attached
+  // its reader, and the body's bytes are emitted into thin air.
+  let bodyStream = req;
+  if (hasBody) {
+    let seen = 0;
+    const counter = new Transform({
+      transform(chunk, _enc, cb) {
+        seen += chunk.length;
+        if (seen > maxBody) {
+          const err = new Error('Request body exceeded the size limit.');
+          err.statusCode = 413;
+          req.destroy();
+          cb(err);
+          return;
+        }
+        cb(null, chunk);
+      },
+    });
+    bodyStream = req.pipe(counter);
+  }
 
   return new Request(url, {
     method: req.method,
     headers,
-    // req is a readable stream; handing it over unbuffered keeps a large
-    // upload off the heap. duplex is required when a stream is the body.
-    body: hasBody ? req : undefined,
+    // The body stays a stream end to end; handing it over unbuffered keeps a
+    // large upload off the heap. duplex is required when a stream is the body.
+    body: hasBody ? bodyStream : undefined,
     duplex: hasBody ? 'half' : undefined,
     redirect: 'manual',
   });
@@ -193,7 +237,12 @@ export async function createServer({ db = null, storage = null } = {}) {
 
   // Behind Hostinger's proxy: without this, req.protocol is http and every
   // generated link and secure-cookie decision is wrong.
-  app.set('trust proxy', true);
+  //
+  // The hop count matters: trusting one hop means req.ip is the address the
+  // proxy in front of this process saw, which is the only value worth rate
+  // limiting or auditing. TRUST_PROXY_HOPS covers a deployment that later
+  // puts a CDN in front (two hops).
+  app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1));
   app.disable('x-powered-by');
 
   app.use(compression());
@@ -218,6 +267,13 @@ export async function createServer({ db = null, storage = null } = {}) {
       });
       await sendWebResponse(res, response);
     } catch (err) {
+      if (err?.statusCode === 413 && !res.headersSent) {
+        res.status(413).json({
+          success: false, data: null,
+          error: { code: 'payload_too_large', message: 'That request is larger than this server accepts.' },
+        });
+        return;
+      }
       console.error('  request failed:', err?.stack ?? err);
       if (!res.headersSent) {
         res.status(500).json({

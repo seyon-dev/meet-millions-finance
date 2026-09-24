@@ -1,6 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from './helpers/app.js';
+import { BOOTSTRAP_VERSION } from '../src/services/bootstrap.js';
 import { D1Shim } from './helpers/d1.js';
 import { ensureBootstrapped } from '../src/services/bootstrap.js';
 import { verifyPassword } from '../src/auth/password.js';
@@ -135,7 +136,8 @@ describe('Deployment bootstrap', () => {
     const marker = await db.one(
       `SELECT value_json FROM settings
         WHERE tenant_id IS NULL AND namespace = 'platform' AND key = 'bootstrap_version'`);
-    assert.equal(marker.value_json, '"1"', 'the marker was brought up to date');
+    assert.equal(marker.value_json, JSON.stringify(BOOTSTRAP_VERSION),
+      'the marker was brought up to date');
 
     const rows = await db.one('SELECT COUNT(*) AS n FROM settings');
     assert.equal(Number(rows.n), 1, 'one marker row, not one per run');
