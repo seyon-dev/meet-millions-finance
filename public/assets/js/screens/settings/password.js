@@ -27,11 +27,17 @@ export default async function passwordScreen() {
   // The rules come from the organisation's own policy where the caller may
   // read it; otherwise the conservative defaults are shown.
   let policy = { password_min_length: 10, password_require_mixed: 1 };
-  try {
-    const { data } = await api.get('/settings/security');
-    policy = data.policy ?? data.defaults ?? policy;
-  } catch {
-    // Reading the policy is an administrator's right; not having it is fine.
+  if (session.isPlatformOnly()) {
+    // The platform owner has no organisation policy; their account is held
+    // to the stronger platform rule the claim form enforces.
+    policy = { password_min_length: 12, password_require_mixed: 1 };
+  } else {
+    try {
+      const { data } = await api.get('/settings/security');
+      policy = data.policy ?? data.defaults ?? policy;
+    } catch {
+      // Reading the policy is an administrator's right; not having it is fine.
+    }
   }
 
   const current = el('input.mm-input', {

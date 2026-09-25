@@ -96,19 +96,29 @@ export default async function settingsScreen() {
   const page = el('div.mm-page');
   const orgHost = el('div');
 
-  const visible = AREAS.filter(area => !area.permission || session.can(area.permission));
+  // The platform owner belongs to no organisation: every organisation area
+  // below would open onto nothing. Their own account is what they manage here.
+  const platformOnly = session.isPlatformOnly();
+  const PERSONAL = new Set(['/settings/profile', '/settings/password']);
+  const visible = platformOnly
+    ? AREAS.filter(area => PERSONAL.has(area.path) || area.title === 'Your security')
+    : AREAS.filter(area => !area.permission || session.can(area.permission));
 
   page.append(
     pageHead({
       title: 'Settings',
-      subtitle: 'Your own preferences, and — where you have the permission — the organisation’s.',
+      subtitle: platformOnly
+        ? 'Your platform owner account: name, sign-in email, password and two-factor.'
+        : 'Your own preferences, and — where you have the permission — the organisation’s.',
     }),
     orgHost,
     el('div.mm-grid.mm-grid-3.mm-gap-4',
       ...visible.map(area => areaCard(area))));
 
-  render(orgHost, skeletonTiles(1));
-  loadOrganisation(orgHost);
+  if (!platformOnly) {
+    render(orgHost, skeletonTiles(1));
+    loadOrganisation(orgHost);
+  }
 
   return page;
 }

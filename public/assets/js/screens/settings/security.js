@@ -42,7 +42,9 @@ export default async function securityScreen() {
   }
 
   async function loadOrg() {
-    if (!session.can('settings.manage')) { render(orgHost); return; }
+    // No organisation, no organisation policy: the platform owner's security
+    // is their own two-factor and sessions, on the left.
+    if (!session.can('settings.manage') || session.isPlatformOnly()) { render(orgHost); return; }
     render(orgHost, skeletonTable(6, 2));
     try {
       const { data } = await api.get('/settings/security');
@@ -58,11 +60,15 @@ export default async function securityScreen() {
   page.append(
     pageHead({
       title: 'Security',
-      subtitle: session.can('settings.manage')
+      subtitle: session.can('settings.manage') && !session.isPlatformOnly()
         ? 'Your account, and the rules everybody in the organisation is held to.'
         : 'How your account is protected.',
     }),
-    el('div.mm-grid.mm-grid-2-1.mm-gap-4', mineHost, orgHost));
+    // The platform owner has no organisation column, so their own security
+    // takes the full width rather than leaving an empty half.
+    session.isPlatformOnly()
+      ? el('div.mm-stack.mm-gap-4', mineHost)
+      : el('div.mm-grid.mm-grid-2-1.mm-gap-4', mineHost, orgHost));
 
   await Promise.all([loadMine(), loadOrg()]);
   return page;

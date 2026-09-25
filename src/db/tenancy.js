@@ -63,7 +63,13 @@ export class TenantScope {
     this.actorId = opts.actorId ?? null;
 
     if (!this.isPlatform && !this.tenantId) {
-      throw new AppError('A tenant scope requires a tenant id.', { code: 'scope_missing_tenant' });
+      // Reached by a signed-in account that belongs to no organisation — in
+      // practice the platform owner opening an organisation screen directly.
+      // That is not a server fault: answer with a deliberate 403 that says
+      // what to do instead, rather than a 500 with a support reference.
+      throw new ForbiddenError(
+        'This page belongs to an organisation\u2019s workspace. As the platform owner, open an organisation from Organisations and use Support access.',
+        { reason: 'organisation_required' });
     }
   }
 
@@ -182,7 +188,11 @@ export class TenantScope {
   async insert(table, data) {
     const row = { ...data };
     if (TENANT_TABLES.has(table) && row.tenant_id === undefined) {
-      if (!this.tenantId) throw new AppError('Cannot insert without a tenant.', { code: 'scope_missing_tenant' });
+      if (!this.tenantId) {
+        throw new ForbiddenError(
+          'This page belongs to an organisation\u2019s workspace. As the platform owner, open an organisation from Organisations and use Support access.',
+          { reason: 'organisation_required' });
+      }
       row.tenant_id = this.tenantId;
     }
     if (!this.isPlatform && TENANT_TABLES.has(table) && row.tenant_id !== this.tenantId) {

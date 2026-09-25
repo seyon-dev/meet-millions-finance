@@ -123,8 +123,20 @@ async function guard(pathname) {
   if (signedIn && session.session().user?.mustChangePassword && pathname !== '/settings/password') {
     return '/settings/password';
   }
+
+  // The platform owner belongs to no organisation, so an organisation screen
+  // (clients, documents, a firm's settings…) has nothing to show them and the
+  // server answers 403. Keep them on their own screens and say how the
+  // organisation's workspace is actually reached.
+  if (signedIn && session.isPlatformOnly() && !PLATFORM_OWNER_PATHS.test(pathname)) {
+    notify.info('Organisation screens open through Organisations \u2192 Support access.', { timeout: 4000 });
+    return '/admin/dashboard';
+  }
   return null;
 }
+
+/** Where a platform owner — who belongs to no organisation — may go. */
+const PLATFORM_OWNER_PATHS = /^\/(admin\/dashboard|platform(\/.*)?|settings|settings\/(profile|password|security)|notifications)$/;
 
 async function mountAppShell() {
   if (shellMounted) return;

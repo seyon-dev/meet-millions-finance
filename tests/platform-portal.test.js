@@ -187,3 +187,32 @@ describe('Your own account', () => {
     assert.equal(clash.status, 409);
   });
 });
+
+describe('The platform owner outside the platform', () => {
+  test('organisation screens answer a deliberate 403 with guidance, never a 500', async () => {
+    const app = await createApp();
+    await registerOrg(app);
+    const platform = await createUserWithRole(app, {
+      tenantId: null, email: 'owner@meetmillions.test', fullName: 'Priyanka Deshmukh', roleKey: 'super_admin',
+    });
+    const login = await app.request('/api/auth/login', {
+      method: 'POST', body: { email: platform.email, password: platform.password, portal: 'platform' },
+    });
+    const token = login.data.token;
+
+    // Every one of these crashed with scope_missing_tenant (500) before.
+    for (const path of ['/api/clients', '/api/documents', '/api/settings', '/api/settings/security',
+      '/api/users', '/api/audit', '/api/billing/subscription', '/api/tasks', '/api/reports']) {
+      const res = await app.request(path, { token });
+      assert.equal(res.status, 403, `${path} answered ${res.status}: ${JSON.stringify(res.body).slice(0, 160)}`);
+      assert.equal(res.error.details.reason, 'organisation_required', path);
+      assert.match(res.error.message, /Support access/, path);
+    }
+
+    // Their own screens keep working.
+    for (const path of ['/api/auth/me', '/api/dashboard', '/api/platform/tenants', '/api/auth/sessions']) {
+      const res = await app.request(path, { token });
+      assert.equal(res.status, 200, `${path} answered ${res.status}`);
+    }
+  });
+});
