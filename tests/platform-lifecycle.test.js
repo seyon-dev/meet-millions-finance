@@ -31,6 +31,20 @@ describe('Platform subscription lifecycle', () => {
     return new Db(app.env.DB);
   }
 
+  test('a platform-created owner cannot keep the temporary password', async () => {
+    const { app, platformToken } = await setup();
+    const res = await app.request('/api/platform/tenants', {
+      method: 'POST', token: platformToken,
+      body: { name: 'Harbourline Advisors', ownerName: 'Nikhil Bose', ownerEmail: 'nikhil@harbourline.test', planKey: 'standard' },
+    });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.ok(res.data.temporaryPassword, 'the one-time password is returned once');
+
+    const d = await db(app);
+    const owner = await d.one('SELECT must_change_password FROM users WHERE email = ?', ['nikhil@harbourline.test']);
+    assert.equal(Number(owner.must_change_password), 1, 'first sign-in forces a real password');
+  });
+
   test('extending a subscription moves the period and lands in the ledger', async () => {
     const { app, tenantId, platformToken } = await setup();
     const d = await db(app);

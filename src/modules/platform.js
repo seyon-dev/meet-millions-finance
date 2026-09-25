@@ -213,6 +213,10 @@ router.post('/tenants', async (ctx) => {
     isDemo: input.isDemo,
   });
 
+  // A temporary password is temporary: the owner must replace it at first
+  // sign-in, or the value platform staff passed around stays valid forever.
+  await db.update('users', { id: result.user.id }, { must_change_password: 1, updated_at: nowIso() });
+
   if (input.trialDays) {
     await db.update('subscriptions', { id: result.subscription.id }, {
       status: 'trialing', trial_ends_at: addDays(input.trialDays), updated_at: nowIso(),
