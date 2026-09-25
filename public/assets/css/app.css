@@ -227,7 +227,9 @@ a.mm-list__main:hover .mm-fw-medium { color: var(--mm-primary); }
   scrollbar-width: thin;
 }
 .mm-steps--strip .mm-step {
-  flex: 1 0 116px;
+  flex: 1 0 128px;
+  min-width: 128px;
+  max-width: 200px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -256,6 +258,9 @@ a.mm-list__main:hover .mm-fw-medium { color: var(--mm-primary); }
   font-size: var(--mm-text-xs);
   color: var(--mm-text-secondary);
   line-height: 1.3;
+  white-space: normal;
+  overflow-wrap: break-word;
+  max-width: 100%;
 }
 .mm-steps--strip .mm-step__count {
   font-size: var(--mm-text-sm);

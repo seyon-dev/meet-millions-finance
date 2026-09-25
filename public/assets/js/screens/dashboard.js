@@ -89,6 +89,7 @@ function tiles(list) {
       tone: tile.tone === 'default' ? null : tile.tone,
       icon: tile.icon,
       href: tile.route,
+      hero: !!tile.hero,
     })));
 }
 

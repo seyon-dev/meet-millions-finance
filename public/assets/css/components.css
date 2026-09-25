@@ -699,3 +699,32 @@
 
 /* Counter animation target — numbers tick up rather than snapping in. */
 .mm-count { font-variant-numeric: tabular-nums; }
+
+/* --------------------------------------------------------------------------
+   STAT HIERARCHY & ENTRANCE
+   The most important number on a dashboard is visually dominant, and KPI
+   grids arrive with a quiet stagger. Both stand down for reduced motion.
+   -------------------------------------------------------------------------- */
+.mm-stat--hero {
+  grid-column: span 2;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--mm-primary) 10%, var(--mm-bg-surface)) 0%,
+      var(--mm-bg-surface) 55%);
+  border-color: color-mix(in srgb, var(--mm-primary) 35%, var(--mm-border-subtle));
+}
+.mm-stat--hero .mm-stat__value { font-size: var(--mm-text-4xl); }
+.mm-stat--hero .mm-stat__label { color: var(--mm-primary); }
+@media (max-width: 900px) { .mm-stat--hero { grid-column: span 1; } .mm-stat--hero .mm-stat__value { font-size: var(--mm-text-3xl); } }
+
+@keyframes mm-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: no-preference) {
+  .mm-grid > .mm-stat, .mm-grid > .mm-stat-link, .mm-grid > .mm-card {
+    animation: mm-rise 0.45s var(--mm-ease-out) backwards;
+  }
+  .mm-grid > :nth-child(2) { animation-delay: 0.05s; }
+  .mm-grid > :nth-child(3) { animation-delay: 0.1s; }
+  .mm-grid > :nth-child(4) { animation-delay: 0.15s; }
+  .mm-grid > :nth-child(5) { animation-delay: 0.2s; }
+  .mm-grid > :nth-child(n+6) { animation-delay: 0.25s; }
+}
+

@@ -23,7 +23,7 @@
  * drift, so editing the script without updating the hash cannot ship a page
  * whose own theme script is blocked.
  */
-export const INLINE_THEME_SCRIPT_HASH = 'sha256-54aSc7dy59RBlNQJMRL6A4AIDZu5N9J4SydUicr+OtU=';
+export const INLINE_THEME_SCRIPT_HASH = 'sha256-vDPHVS3ZJTRS5rQp8TS+BcQzfbM8IiLMHbnQ363kK+4=';
 
 /** Where each gateway's SDK is served from. */
 const GATEWAY_SCRIPTS = [

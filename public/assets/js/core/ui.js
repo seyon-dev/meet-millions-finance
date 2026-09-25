@@ -463,12 +463,45 @@ export function avatar(name, { size = null, key = null } = {}) {
 }
 
 /** A stat tile. `delta` is a signed percentage against the previous period. */
-export function stat({ label: title, value, caption = null, delta = null, tone = null, icon: iconName = null, href = null }) {
-  const body = el('div.mm-stat', { class: tone ? `mm-stat--${tone}` : '' },
+/**
+ * Count a numeric text up from zero, honouring the person's reduced-motion
+ * preference and any prefix/suffix (so ₹1,23,456.00 stays a rupee amount the
+ * whole way). Non-numeric values render as they are.
+ */
+export function countUp(node, text, { duration = 800 } = {}) {
+  const raw = String(text ?? '');
+  const match = raw.match(/^([^0-9-]*)(-?[\d,]+(?:\.\d+)?)(.*)$/);
+  let reduced = false;
+  try { reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { /* assume motion */ }
+  const target = match ? Number(match[2].replace(/,/g, '')) : NaN;
+  if (!match || reduced || !Number.isFinite(target) || target === 0 || Math.abs(target) > 1e12) {
+    node.textContent = raw;
+    return;
+  }
+  const [, prefix, num, suffix] = match;
+  const decimals = (num.split('.')[1] ?? '').length;
+  const grouped = num.includes(',');
+  const t0 = performance.now();
+  const frame = (t) => {
+    const p = Math.min(1, (t - t0) / duration);
+    const eased = 1 - (1 - p) ** 3;
+    const current = target * eased;
+    node.textContent = prefix + (grouped
+      ? current.toLocaleString('en-IN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+      : current.toFixed(decimals)) + suffix;
+    if (p < 1) requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+
+export function stat({ label: title, value, caption = null, delta = null, tone = null, icon: iconName = null, href = null, hero = false }) {
+  const valueNode = el('p.mm-stat__value');
+  countUp(valueNode, String(value ?? '—'));
+  const body = el('div.mm-stat', { class: [tone ? `mm-stat--${tone}` : '', hero ? 'mm-stat--hero' : ''].filter(Boolean).join(' ') },
     el('div.mm-stat__meta',
       el('span.mm-stat__label', { text: title }),
       iconName ? icon(iconName, { size: 'sm' }) : null),
-    el('p.mm-stat__value', { text: String(value ?? '—') }),
+    valueNode,
     caption || delta !== null
       ? el('div.mm-stat__caption',
           delta === null || delta === undefined

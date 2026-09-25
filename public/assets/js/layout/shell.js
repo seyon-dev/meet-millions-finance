@@ -368,12 +368,16 @@ function buildTopbar(state) {
 }
 
 function cycleTheme(e) {
-  const current = document.documentElement.getAttribute('data-theme') ?? 'system';
+  // Cycle the stored PREFERENCE (dark -> light -> system), not the resolved
+  // attribute — the attribute is always set, so it can never say "system".
+  let current = 'system';
+  try { current = localStorage.getItem('mm.theme') ?? 'system'; } catch { /* resolved icon still cycles */ }
   const next = current === 'dark' ? 'light' : current === 'light' ? 'system' : 'dark';
   session.setTheme(next);
 
   const button = e.currentTarget;
-  render(button, icon(next === 'light' ? 'moon' : 'sun'));
+  const resolved = document.documentElement.getAttribute('data-theme');
+  render(button, icon(resolved === 'light' ? 'moon' : 'sun'));
   notify.info(`Theme: ${next === 'system' ? 'matching your system' : next}`, { timeout: 1800 });
 }
 

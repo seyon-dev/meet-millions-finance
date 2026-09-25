@@ -160,7 +160,12 @@
    DARK THEME (default) — deep navy / midnight
    ========================================================================== */
 :root,
-:root[data-theme="dark"] {
+:root[data-theme="dark"],
+/* The landing page is art-directed on the dark palette. Pinning the tokens
+   to its subtree keeps it readable whatever theme the visitor's OS or a
+   previous session chose — custom properties set on the element itself
+   always beat the ones inherited from :root. */
+.mm-landing {
   color-scheme: dark;
 
   /* Surfaces — layered, each step a genuine elevation not a tint of grey */

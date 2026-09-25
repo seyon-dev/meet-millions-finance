@@ -556,9 +556,21 @@ async function platformDashboard(ctx) {
          ON latest.tenant_id = s.tenant_id AND latest.mc = s.created_at
       GROUP BY s.status`);
 
-  const recentActivity = await db.many(
+  const recentActivityRows = await db.many(
     `SELECT action, actor_name, entity_label, severity, created_at
        FROM audit_logs WHERE tenant_id IS NULL ORDER BY sequence DESC LIMIT 8`);
+  // The dashboard's activity card renders { summary, verb, actor_name,
+  // created_at } — the same shape the organisation dashboards feed it.
+  const recentActivity = recentActivityRows.map(r => {
+    const verb = String(r.action ?? '').split('.').pop() ?? 'event';
+    const noun = String(r.action ?? '').split('.')[0] ?? '';
+    return {
+      summary: [r.entity_label, `${noun} ${verb.replace(/_/g, ' ')}`.trim()].filter(Boolean).join(' — '),
+      verb,
+      actor_name: r.actor_name,
+      created_at: r.created_at,
+    };
+  });
 
   const mrr = await db.one(
     `SELECT COALESCE(SUM(p.monthly_price_paise),0) AS plan_mrr

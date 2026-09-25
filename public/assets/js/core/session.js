@@ -236,8 +236,12 @@ export function theme() {
 export function setTheme(value) {
   const root = document.documentElement;
   if (value === 'system') {
-    root.removeAttribute('data-theme');
+    // System means the OS decides — now AND when the OS setting changes
+    // while the tab is open. The attribute is always set explicitly (the
+    // stylesheet's :root fallback is dark), so following the OS is this
+    // controller's job, not the stylesheet's.
     localStorage.removeItem(THEME_KEY);
+    root.setAttribute('data-theme', osTheme());
   } else {
     root.setAttribute('data-theme', value);
     localStorage.setItem(THEME_KEY, value);
@@ -245,7 +249,21 @@ export function setTheme(value) {
   document.dispatchEvent(new CustomEvent('mm:theme', { detail: value }));
 }
 
+function osTheme() {
+  try {
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  } catch { return 'dark'; }
+}
+
 export function initTheme() {
   const stored = localStorage.getItem(THEME_KEY);
-  if (stored) document.documentElement.setAttribute('data-theme', stored);
+  document.documentElement.setAttribute('data-theme', stored || osTheme());
+  // Follow the OS live while no explicit choice is stored.
+  try {
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+      if (localStorage.getItem(THEME_KEY)) return;
+      document.documentElement.setAttribute('data-theme', osTheme());
+      document.dispatchEvent(new CustomEvent('mm:theme', { detail: 'system' }));
+    });
+  } catch { /* older engines: the pre-paint choice stands */ }
 }

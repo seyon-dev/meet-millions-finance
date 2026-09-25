@@ -14,6 +14,7 @@
 
 import { el } from '../core/dom.js';
 import { icon } from '../core/icons.js';
+import { countUp } from '../core/ui.js';
 
 /** The filing month, which is the spine of the whole product. */
 const FLOW = [
@@ -97,6 +98,14 @@ const FAQ = [
    'Every approval, edit and sign-off is recorded in a hash-chained audit log with who and when, anchored nightly.'],
 ];
 
+function panelStat(label, value) {
+  const v = el('span.mm-landing__panel-stat-v');
+  countUp(v, value, { duration: 1200 });
+  return el('div.mm-landing__panel-stat',
+    v,
+    el('span.mm-landing__panel-stat-k', { text: label }));
+}
+
 export default async function landingScreen() {
   return el('div.mm-landing',
     el('div.mm-landing__bg', { 'aria-hidden': 'true' },
@@ -156,13 +165,25 @@ export default async function landingScreen() {
           el('span.mm-landing__dot'), el('span.mm-landing__dot'), el('span.mm-landing__dot'),
           el('span.mm-landing__panel-title', { text: 'September filing' })),
         el('div.mm-landing__panel-body',
+          // A living miniature of the product, not a stock screenshot: the
+          // month's numbers count up, collections rise bar by bar, and the
+          // client list settles in below. All of it decorative, all of it
+          // still for anyone who prefers reduced motion.
+          el('div.mm-landing__panel-stats',
+            panelStat('Collected this month', '₹4,82,500'),
+            panelStat('Documents verified', '75'),
+            panelStat('Ready to file', '4/5')),
+          el('div.mm-landing__chart',
+            ...[42, 58, 47, 72, 64, 88].map((h, i) => el('span.mm-landing__chart-bar', {
+              style: `--h:${h}%; --i:${i}`,
+            }))),
           ...[
             ['Radiant Traders', 'Verified', 'ok'],
             ['Northline Textiles', 'In review', 'warn'],
             ['Vantara Foods', 'Query raised', 'warn'],
             ['Kestrel Logistics', 'Signed off', 'ok'],
             ['Solaris Apparel', 'Collecting', 'idle'],
-          ].map(([name, state, tone]) => el('div.mm-landing__row',
+          ].map(([name, state, tone], i) => el('div.mm-landing__row', { style: `--i:${i}` },
             el('span.mm-landing__row-name', { text: name }),
             el('span.mm-landing__chip', { class: `mm-landing__chip--${tone}`, text: state }))),
           el('div.mm-landing__panel-foot',

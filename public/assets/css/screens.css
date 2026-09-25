@@ -1299,3 +1299,45 @@
 .mm-landing__foot-links { display: flex; gap: var(--mm-space-5); }
 .mm-landing__foot-links a { color: var(--mm-text-secondary); text-decoration: none; }
 .mm-landing__foot-links a:hover { color: var(--mm-text-primary); }
+
+/* --------------------------------------------------------------------------
+   LANDING — the living panel. Counters, a rising bar chart and settling rows
+   make the preview feel like the product; reduced motion stills all of it.
+   -------------------------------------------------------------------------- */
+.mm-landing__panel-stats {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--mm-space-3); margin-bottom: var(--mm-space-4);
+}
+.mm-landing__panel-stat {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: var(--mm-space-3); border-radius: var(--mm-radius-md);
+  background: var(--mm-bg-surface-2); border: 1px solid var(--mm-border-subtle);
+}
+.mm-landing__panel-stat-v {
+  font-family: var(--mm-font-display); font-weight: var(--mm-weight-bold);
+  font-size: var(--mm-text-lg); letter-spacing: var(--mm-tracking-tight);
+  font-variant-numeric: tabular-nums; color: var(--mm-text-primary);
+}
+.mm-landing__panel-stat-k { font-size: var(--mm-text-2xs); color: var(--mm-text-tertiary); text-transform: uppercase; letter-spacing: var(--mm-tracking-caps); }
+
+.mm-landing__chart {
+  display: flex; align-items: flex-end; gap: var(--mm-space-2);
+  height: 72px; margin-bottom: var(--mm-space-4);
+  padding: 0 var(--mm-space-1);
+}
+.mm-landing__chart-bar {
+  flex: 1 1 0; height: var(--h);
+  border-radius: 4px 4px 2px 2px;
+  background: linear-gradient(180deg, var(--mm-primary) 0%, color-mix(in srgb, var(--mm-primary) 45%, transparent) 100%);
+  opacity: 0.9;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mm-landing__chart-bar {
+    animation: mm-landing-grow 0.8s var(--mm-ease-out) backwards;
+    animation-delay: calc(0.25s + var(--i) * 0.09s);
+    transform-origin: bottom;
+  }
+  .mm-landing__row { animation: mm-rise 0.5s var(--mm-ease-out) backwards; animation-delay: calc(0.5s + var(--i) * 0.07s); }
+  .mm-landing__panel-stat { animation: mm-rise 0.5s var(--mm-ease-out) backwards; }
+}
+@keyframes mm-landing-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
