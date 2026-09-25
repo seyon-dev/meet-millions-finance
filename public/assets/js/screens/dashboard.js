@@ -67,6 +67,7 @@ function build(data) {
     data.deadlines?.length ? deadlinesCard(data.deadlines) : null,
     data.recentActivity?.length ? activityCard(data.recentActivity) : null,
     data.eventsByCategory?.length ? auditCard(data) : null,
+    data.needsAttention ? attentionCard(data) : null,
     data.planDistribution?.length ? platformCard(data) : null,
     data.note ? el('p.mm-muted.mm-text-sm', { text: data.note }) : null,
   ].filter(Boolean);
@@ -275,6 +276,56 @@ function auditCard(data) {
       emptyMessage: 'No audit events recorded yet.',
     }),
   });
+}
+
+/**
+ * The organisations that need somebody today: past due, in grace, expiring,
+ * suspended. This is the platform owner's worklist, so each row opens the
+ * organisation, and an empty list is good news worth saying.
+ */
+function attentionCard(data) {
+  const rows = data.needsAttention ?? [];
+  const lifecycle = card({
+    title: 'Subscription states',
+    body: rankBars({
+      rows: Object.entries(data.subscriptionsByStatus ?? {})
+        .sort((a, b) => b[1] - a[1])
+        .map(([status, n]) => ({ label: fmt.label(status), value: n })),
+      emptyMessage: 'No subscriptions yet.',
+    }),
+  });
+
+  const attention = card({
+    title: 'Needs attention',
+    subtitle: rows.length
+      ? `${fmt.plural(rows.length, 'organisation')} past due, expiring or suspended`
+      : null,
+    flush: rows.length > 0,
+    body: rows.length
+      ? el('ul.mm-list',
+          ...rows.map(t => el('li.mm-list__row.mm-list__row--link', {
+            onClick: () => { window.location.href = `/platform/organisations/${t.id}`; },
+          },
+            el('div.mm-list__main',
+              el('span.mm-fw-medium', { text: t.name }),
+              el('span.mm-muted.mm-text-xs', {
+                text: [
+                  t.planName,
+                  t.trialEndsAt ? `trial ends ${fmt.date(t.trialEndsAt)}` : null,
+                  t.currentPeriodEnd ? `period ends ${fmt.date(t.currentPeriodEnd)}` : null,
+                ].filter(Boolean).join(' · '),
+              })),
+            t.tenantStatus !== 'active' ? statusPill(t.tenantStatus) : null,
+            statusPill(t.subscriptionStatus))))
+      : emptyState({
+          title: 'All quiet',
+          message: 'No organisation is past due, in grace, or about to expire.',
+          icon: 'check-circle',
+          inline: true,
+        }),
+  });
+
+  return el('div.mm-grid.mm-grid-2.mm-gap-4', attention, lifecycle);
 }
 
 function platformCard(data) {

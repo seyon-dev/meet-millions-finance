@@ -42,6 +42,7 @@ function emit() {
 }
 
 export function session() { return state; }
+export function supportAccess() { return state.supportAccess ?? null; }
 export function isSignedIn() { return !!state.user; }
 
 /** Does the signed-in user hold this permission? */
@@ -119,6 +120,7 @@ export function apply(payload) {
   state.branding = payload.branding ?? null;
   state.landing = payload.landing ?? null;
   state.unreadNotifications = payload.unreadNotifications ?? 0;
+  state.supportAccess = payload.supportAccess ?? null;
   state.demoMode = !!payload.demoMode;
   state.loaded = true;
   applyBranding(state.branding);
@@ -129,6 +131,7 @@ export function apply(payload) {
 export function reset() {
   setToken(null);
   state.user = null;
+  state.supportAccess = null;
   state.tenant = null;
   state.roles = [];
   state.permissions = new Set();

@@ -669,3 +669,41 @@
   font-variant-numeric: tabular-nums;
 }
 .mm-nav-item.is-active .mm-nav-item__badge { background: var(--mm-primary-soft); color: var(--mm-primary); }
+
+/* ---------------------------------------------------------------------------
+   Support-access banner — the platform administrator inside another
+   organisation. Deliberately unmissable, deliberately unlike anything a
+   normal tenant session shows: full-width, glass over an amber wash, pinned
+   above the topbar on every page of the session.
+--------------------------------------------------------------------------- */
+.mm-support-banner {
+  display: flex; align-items: center; gap: var(--mm-space-4);
+  padding: var(--mm-space-2) var(--mm-space-5);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--mm-warning) 16%, transparent),
+      color-mix(in srgb, var(--mm-warning) 7%, transparent) 60%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--mm-warning) 45%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  position: sticky; top: 0; z-index: 60;
+}
+.mm-support-banner__body {
+  display: flex; align-items: baseline; gap: var(--mm-space-3);
+  flex-wrap: wrap; min-width: 0; flex: 1 1 auto;
+  font-size: var(--mm-text-sm);
+}
+.mm-support-banner__flag {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-weight: var(--mm-weight-bold); letter-spacing: 0.04em; text-transform: uppercase;
+  font-size: var(--mm-text-2xs); color: var(--mm-warning-text);
+}
+.mm-support-banner__flag svg { width: 14px; height: 14px; }
+.mm-support-banner__org { font-weight: var(--mm-weight-semibold); color: var(--mm-text-primary); }
+.mm-support-banner__status { color: var(--mm-danger-text); font-weight: var(--mm-weight-semibold); text-transform: capitalize; }
+.mm-support-banner__meta { color: var(--mm-text-secondary); font-size: var(--mm-text-xs); }
+.mm-support-banner__timer { font-variant-numeric: tabular-nums; }
+.mm-support-banner__exit { flex-shrink: 0; }
+
+@media (max-width: 640px) {
+  .mm-support-banner { flex-direction: column; align-items: stretch; gap: var(--mm-space-2); }
+  .mm-support-banner__exit { width: 100%; }
+}

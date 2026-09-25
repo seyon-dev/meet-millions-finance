@@ -588,16 +588,25 @@ async function platformDashboard(ctx) {
   const planMrr = Number(mrr?.plan_mrr) || 0;
   const addonMrr = Number(addOnMrr?.addon_mrr) || 0;
 
+  const troubled = Number(counts?.suspended_tenants) || 0;
   return {
     title: 'Platform',
     tiles: [
-      tile('Active tenants', Number(counts?.active_tenants) || 0, { icon: 'building', route: '/platform/organisations' }),
       tile('Monthly recurring', formatINR(planMrr + addonMrr), {
-        icon: 'rupee', route: '/platform/revenue',
+        icon: 'rupee', route: '/platform/revenue', hero: true,
         caption: `${formatINR(planMrr)} plans + ${formatINR(addonMrr)} add-ons`,
       }),
+      tile('Active organisations', Number(counts?.active_tenants) || 0, {
+        icon: 'building', route: '/platform/organisations',
+        caption: `${Number(counts?.trial_tenants) || 0} on trial · ${troubled} suspended`,
+        tone: troubled > 0 ? 'warning' : 'default',
+      }),
+      tile('Outstanding', formatINR(Number(outstanding?.due) || 0), {
+        icon: 'credit-card', route: '/platform/revenue',
+        caption: `${Number(outstanding?.invoices) || 0} unpaid invoice(s)`,
+        tone: Number(outstanding?.due) > 0 ? 'warning' : 'default',
+      }),
       tile('Users', Number(counts?.users) || 0, { icon: 'users' }),
-      tile('Documents stored', Number(counts?.documents) || 0, { icon: 'file' }),
     ],
     secondary: [
       tile('Companies', Number(counts?.companies) || 0, { icon: 'building' }),

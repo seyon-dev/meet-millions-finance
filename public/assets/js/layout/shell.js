@@ -37,6 +37,7 @@ export function mountShell(root) {
     scrim,
     sidebar,
     el('div.mm-shell__main',
+      supportBanner(state),
       topbar,
       demoBanner(state),
       outlet,
@@ -449,6 +450,73 @@ function closeMenu() {
 // ---------------------------------------------------------------------------
 // Banners
 // ---------------------------------------------------------------------------
+/**
+ * The support-access banner. Unmissable by design: whenever the platform
+ * administrator is inside another organisation, every page says whose
+ * account this is, who is really signed in, what the session may do, when it
+ * dies, and how to leave. It must never be confusable with a normal sign-in.
+ */
+function supportBanner(state) {
+  const access = state.supportAccess;
+  if (!access) return null;
+
+  const remaining = el('span.mm-support-banner__timer');
+  const paintRemaining = () => {
+    const ms = new Date(access.expiresAt).getTime() - Date.now();
+    if (ms <= 0) {
+      remaining.textContent = 'expired';
+      exitSupportAccess({ silent: true });
+      return;
+    }
+    const mins = Math.ceil(ms / 60000);
+    remaining.textContent = mins >= 2 ? `expires in ${mins} minutes` : 'expires in under a minute';
+  };
+  paintRemaining();
+  const timer = setInterval(paintRemaining, 30_000);
+
+  const host = el('div.mm-support-banner', { role: 'alert' },
+    el('div.mm-support-banner__body',
+      el('span.mm-support-banner__flag', icon('shield'), ' Support access'),
+      el('span.mm-support-banner__org',
+        `${access.mode === 'view' ? 'Viewing' : 'Acting in'} ${access.organisation ?? 'an organisation'}`,
+        access.organisationStatus && access.organisationStatus !== 'active'
+          ? el('span.mm-support-banner__status', ` — ${access.organisationStatus}`) : null),
+      el('span.mm-support-banner__meta',
+        `${access.mode === 'view' ? 'View-only' : 'Support mode'} · signed in as ${access.by ?? 'the platform'} · `,
+        remaining)),
+    el('button.mm-btn.mm-btn--sm.mm-support-banner__exit', {
+      type: 'button', text: 'Exit organisation',
+      onClick: () => { clearInterval(timer); exitSupportAccess(); },
+    }));
+  document.addEventListener('mm:teardown', () => clearInterval(timer), { once: true });
+  return host;
+}
+
+/**
+ * Leave a support session: end it server-side so the token is dead, then
+ * return to the untouched platform session. If the stash is gone (another
+ * tab exited first, storage cleared), the ordinary sign-out path catches us.
+ */
+async function exitSupportAccess({ silent = false } = {}) {
+  try { await api.post('/auth/support/exit'); } catch { /* already expired or revoked — fine */ }
+
+  let platformToken = null;
+  try {
+    platformToken = localStorage.getItem('mm.platformToken');
+    localStorage.removeItem('mm.platformToken');
+  } catch { /* blocked storage */ }
+
+  const { setToken } = await import('../core/api.js');
+  if (platformToken) {
+    setToken(platformToken);
+    if (!silent) notify.success('Support session ended. You are back on the platform.');
+    window.location.href = '/platform/organisations';
+  } else {
+    setToken(null);
+    window.location.href = '/login';
+  }
+}
+
 function demoBanner(state) {
   if (!state.tenant?.isDemo) return null;
   return el('div.mm-shell__banner',

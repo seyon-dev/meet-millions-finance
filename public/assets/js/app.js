@@ -10,7 +10,7 @@
 import { el, render } from './core/dom.js';
 import * as router from './core/router.js';
 import * as session from './core/session.js';
-import { api, onSessionLost, onStepUpRequired } from './core/api.js';
+import { api, onSessionLost, onStepUpRequired, setToken } from './core/api.js';
 import { notify, promptText } from './core/ui.js';
 
 const PUBLIC_PATHS = new Set([
@@ -31,6 +31,19 @@ async function boot() {
   // sign in, remembering where they were so they return to it.
   onSessionLost(() => {
     if (!session.isSignedIn()) return;
+
+    // A support-access session that expires or is revoked must never dump
+    // the administrator at the login page: their own platform session was
+    // never touched, so put them back on it.
+    let platformToken = null;
+    try { platformToken = localStorage.getItem('mm.platformToken'); } catch { /* blocked storage */ }
+    if (platformToken) {
+      try { localStorage.removeItem('mm.platformToken'); } catch { /* ignore */ }
+      setToken(platformToken);
+      window.location.href = '/platform/organisations';
+      return;
+    }
+
     session.reset();
     const here = window.location.pathname + window.location.search;
     notify.warning('Your session has ended. Please sign in again.');
@@ -233,6 +246,7 @@ function registerRoutes() {
 
   // -- Platform (Super Admin) --------------------------------------------
   route('/platform/organisations', () => import('./screens/platform/tenants.js'));
+  route('/platform/organisations/:id', () => import('./screens/platform/tenant-detail.js'));
   route('/platform/franchises', () => import('./screens/platform/franchises.js'));
   route('/platform/plans', () => import('./screens/platform/plans.js'));
   route('/platform/revenue', () => import('./screens/platform/revenue.js'));

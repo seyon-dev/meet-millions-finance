@@ -33,7 +33,7 @@ export default async function tenantsScreen() {
     // list opens on the one that was searched for rather than on all of them.
     initialQuery: new URLSearchParams(window.location.search).get('q') ?? '',
     defaultSort: 'created_at',
-    onRowClick: (row) => openTenant(row, plans, table),
+    onRowClick: (row) => router.go(`/platform/organisations/${row.id}`),
     filters: (apply, active) => [
       selectFilter({
         label: 'Status',
@@ -155,98 +155,7 @@ export default async function tenantsScreen() {
   return page;
 }
 
-/** One organisation: what they are on, what they use, and who owns it. */
-async function openTenant(tenant, plans, table) {
-  let detail = null;
-  try {
-    ({ data: detail } = await api.get(`/platform/tenants/${tenant.id}`));
-  } catch (err) {
-    notifyError(err);
-    return;
-  }
-
-  const result = await modal({
-    title: detail.tenant.name,
-    description: [detail.tenant.gstin, detail.tenant.email].filter(Boolean).join(' · ') || null,
-    size: 'lg',
-    body: ({ close }) => frag(
-      el('div.mm-grid.mm-grid-4.mm-gap-3',
-        stat({ label: 'Users', value: fmt.number(detail.usage.users), icon: 'users' }),
-        stat({ label: 'Clients', value: fmt.number(detail.usage.clients), icon: 'building' }),
-        stat({ label: 'Documents', value: fmt.number(detail.usage.documents), icon: 'files' }),
-        stat({ label: 'Storage', value: fmt.bytes(detail.usage.storageBytes), icon: 'database' })),
-
-      el('div.mm-kvgrid.mm-mt-4',
-        kv('Status', fmt.label(detail.tenant.status)),
-        kv('Plan', detail.subscription?.plan_name ?? 'None'),
-        kv('Subscription', detail.subscription?.status ? fmt.label(detail.subscription.status) : null),
-        kv('Renews', detail.subscription?.current_period_end ? fmt.date(detail.subscription.current_period_end) : null),
-        kv('Franchise', detail.tenant.franchiseName),
-        kv('State', detail.tenant.stateCode, { mono: true }),
-        kv('Joined', fmt.date(detail.tenant.createdAt)),
-        kv('Demo organisation', detail.tenant.isDemo ? 'Yes' : 'No')),
-
-      (detail.owners ?? []).length
-        ? frag(
-            el('h3.mm-label.mm-mt-4', { text: 'Who runs it' }),
-            el('ul.mm-list',
-              ...detail.owners.map(owner => el('li.mm-list__row',
-                el('div.mm-list__main',
-                  el('span.mm-fw-medium', { text: owner.full_name }),
-                  el('span.mm-muted.mm-text-xs', { text: owner.email })),
-                owner.last_login_at
-                  ? el('span.mm-muted.mm-text-xs', { text: `last in ${fmt.relative(owner.last_login_at)}` })
-                  : pill('Never signed in', 'warning')))))
-        : null,
-
-      (detail.addOns ?? []).length
-        ? frag(
-            el('h3.mm-label.mm-mt-4', { text: `Add-ons (${detail.addOns.length})` }),
-            el('div.mm-row.mm-gap-1.mm-wrap',
-              ...detail.addOns.map(addOn => pill(addOn.name, addOn.status === 'active' ? 'success' : 'neutral'))))
-        : null,
-
-      (detail.invoices ?? []).length
-        ? frag(
-            el('h3.mm-label.mm-mt-4', { text: 'Platform invoices' }),
-            el('ul.mm-list',
-              ...detail.invoices.slice(0, 5).map(invoice => el('li.mm-list__row',
-                el('div.mm-list__main',
-                  el('span.mm-fw-medium.mm-mono', { text: invoice.invoice_no }),
-                  el('span.mm-muted.mm-text-xs', { text: fmt.date(invoice.issue_date) })),
-                el('span.mm-numeric', { text: fmt.money(invoice.total_paise) }),
-                statusPill(invoice.status)))))
-        : null,
-
-      el('div.mm-row.mm-gap-2.mm-mt-5',
-        session.can('tenants.suspend')
-          ? el('button.mm-btn.mm-btn--ghost.mm-btn--danger-text', {
-              type: 'button',
-              text: detail.tenant.status === 'suspended' ? 'Lift the suspension' : 'Suspend',
-              onClick: () => close({ action: 'suspend' }),
-            })
-          : null,
-        session.can('users.impersonate')
-          ? el('button.mm-btn.mm-btn--ghost', {
-              type: 'button', text: 'Open a support session', onClick: () => close({ action: 'impersonate' }),
-            })
-          : null,
-        el('span.mm-grow'),
-        el('button.mm-btn.mm-btn--ghost', { type: 'button', text: 'Close', onClick: () => close(null) }),
-        session.can('tenants.update')
-          ? el('button.mm-btn.mm-btn--primary', {
-              type: 'button', text: 'Change plan', onClick: () => close({ action: 'plan' }),
-            })
-          : null)),
-  });
-
-  if (!result) return;
-  if (result.action === 'plan') return changePlan(detail.tenant, plans, table);
-  if (result.action === 'suspend') return toggleSuspend(detail.tenant, table);
-  if (result.action === 'impersonate') return impersonate(detail.tenant, detail.owners ?? []);
-}
-
-async function changePlan(tenant, plans, table) {
+export async function changePlan(tenant, plans, table) {
   const payload = await modal({
     title: `Change ${tenant.name}’s plan`,
     description: 'Existing records are never removed to fit a smaller plan; the new limits bite on the next create.',
@@ -293,7 +202,7 @@ async function changePlan(tenant, plans, table) {
   }
 }
 
-async function toggleSuspend(tenant, table) {
+export async function toggleSuspend(tenant, table) {
   const suspending = tenant.status !== 'suspended';
 
   const reason = await promptText({
@@ -327,7 +236,7 @@ async function toggleSuspend(tenant, table) {
  * trail and in the organisation's own, so they can see that somebody from the
  * platform was in their account and why.
  */
-async function impersonate(tenant, owners) {
+export async function impersonate(tenant, owners) {
   const payload = await modal({
     title: `Open a support session in ${tenant.name}`,
     description: 'They will see this in their own audit trail, with your name and your reason.',
@@ -343,6 +252,12 @@ async function impersonate(tenant, owners) {
       });
       const minutes = el('select.mm-select',
         ...[15, 30, 60].map(m => el('option', { value: String(m), selected: m === 30, text: `${m} minutes` })));
+      // View mode is enforced by the server: the session can read everything
+      // and change nothing. Support mode may act, and every action is
+      // attributed to the administrator in the organisation's audit trail.
+      const mode = el('select.mm-select',
+        el('option', { value: 'view', text: 'View only — inspect, change nothing' }),
+        el('option', { value: 'support', selected: true, text: 'Support — act on their behalf, fully audited' }));
       const errorHost = el('div');
 
       if (!owners.length) {
@@ -366,11 +281,13 @@ async function impersonate(tenant, owners) {
             userId: userSelect.value,
             reason: reason.value.trim(),
             minutes: Number(minutes.value),
+            mode: mode.value,
           });
         },
       },
         errorHost,
         el('div.mm-field', el('label.mm-field__label', { text: 'Act as' }), userSelect),
+        el('div.mm-field', el('label.mm-field__label', { text: 'Mode' }), mode),
         el('div.mm-field', el('label.mm-field__label', { text: 'Why are you going in?' }), reason),
         el('div.mm-field', el('label.mm-field__label', { text: 'For how long' }), minutes),
         el('div.mm-row.mm-end.mm-gap-2.mm-mt-4',
@@ -387,7 +304,11 @@ async function impersonate(tenant, owners) {
       { title: 'Support session open', timeout: 0 });
 
     if (data.token) {
-      const { setToken } = await import('../../core/api.js');
+      const { getToken, setToken } = await import('../../core/api.js');
+      // The platform session is NEVER discarded: it is stashed, the support
+      // token takes over, and Exit (or expiry) restores it. Losing the
+      // administrator's own identity was this flow's original sin.
+      try { localStorage.setItem('mm.platformToken', getToken()); } catch { /* blocked storage */ }
       setToken(data.token);
       await session.load();
       // A full reload, because every open screen is scoped to the previous
