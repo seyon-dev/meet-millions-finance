@@ -566,6 +566,76 @@ router.post('/2fa/step-up', async (ctx) => {
 }, { rateLimit: 'auth.twofa' });
 
 // ---------------------------------------------------------------------------
+// Your own account.
+//
+// Self-service by definition, so it must work for every signed-in person —
+// including the platform owner, who belongs to no organisation and therefore
+// cannot go through the tenant-scoped /users/:id route the team screens use.
+// Changing the sign-in email re-confirms the password first: a walked-away
+// laptop must not be enough to move an account to an attacker's address.
+// ---------------------------------------------------------------------------
+router.patch('/profile', async (ctx) => {
+  const body = await ctx.body();
+  const input = validate(body, {
+    fullName: { type: 'string', max: 120 },
+    phone: { type: 'phone' },
+    jobTitle: { type: 'string', max: 80 },
+    locale: { type: 'string', max: 10 },
+    timezone: { type: 'string', max: 40 },
+    email: { type: 'email' },
+    currentPassword: { type: 'string', max: 256 },
+  });
+
+  const db = new Db(ctx.env.DB);
+  const me = await db.findOne('users', { id: ctx.userId });
+
+  const patch = {};
+  for (const [field, column] of Object.entries({
+    fullName: 'full_name', phone: 'phone', jobTitle: 'job_title', locale: 'locale', timezone: 'timezone',
+  })) {
+    if (input[field] !== null && input[field] !== undefined) patch[column] = input[field];
+  }
+
+  if (input.email && input.email !== me.email) {
+    if (!input.currentPassword || !(await verifyPassword(input.currentPassword, me.password_hash))) {
+      throw new ValidationError('Confirm your password to change the sign-in email.',
+        { currentPassword: 'Enter your current password.' });
+    }
+    // The platform owner's address must stay globally unambiguous; an
+    // organisation account only needs to be unique inside its organisation
+    // (the same person may legitimately hold accounts in two firms).
+    const clash = me.tenant_id
+      ? await db.one('SELECT id FROM users WHERE email = ? AND tenant_id = ? AND deleted_at IS NULL AND id != ?',
+          [input.email, me.tenant_id, me.id])
+      : await db.one('SELECT id FROM users WHERE email = ? AND deleted_at IS NULL AND id != ?',
+          [input.email, me.id]);
+    if (clash) throw new ConflictError('An account already uses that email address.');
+    patch.email = input.email;
+  }
+
+  if (!Object.keys(patch).length) throw new BadRequestError('Nothing to update.');
+
+  await db.update('users', { id: ctx.userId }, { ...patch, updated_at: nowIso() });
+
+  if (patch.email) {
+    await audit(ctx, {
+      action: 'auth.email_changed', category: 'auth', severity: 'warning',
+      entityType: 'user', entityId: ctx.userId, entityLabel: patch.email,
+      oldValue: { email: me.email }, newValue: { email: patch.email },
+    });
+  } else {
+    auditAsync(ctx, {
+      action: 'auth.profile_updated', category: 'auth',
+      entityType: 'user', entityId: ctx.userId, entityLabel: me.email,
+      newValue: patch,
+    });
+  }
+
+  const fresh = await db.findOne('users', { id: ctx.userId });
+  return ok({ user: publicUser(fresh, ctx.roles) }, { ctx });
+});
+
+// ---------------------------------------------------------------------------
 // The platform entrance.
 //
 // An unlisted page, not a secret: the path exists in the application's own

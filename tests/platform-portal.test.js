@@ -109,3 +109,81 @@ describe('Platform entrance', () => {
     assert.equal(claim.status, 409);
   });
 });
+
+describe('Your own account', () => {
+  test('the platform owner edits their name and sign-in email from their own account', async () => {
+    const app = await createApp();
+    const platform = await createUserWithRole(app, {
+      tenantId: null, email: 'owner@meetmillions.test', fullName: 'Priyanka Deshmukh', roleKey: 'super_admin',
+    });
+    const login = await app.request('/api/auth/login', {
+      method: 'POST', body: { email: platform.email, password: platform.password, portal: 'platform' },
+    });
+    const token = login.data.token;
+
+    // The name saves — this used to die on scope_missing_tenant, because the
+    // profile screen went through the tenant-scoped /users/:id route.
+    const rename = await app.request('/api/auth/profile', {
+      method: 'PATCH', token, body: { fullName: 'Priyanka D.' },
+    });
+    assert.equal(rename.status, 200, JSON.stringify(rename.body));
+    assert.equal(rename.data.user.fullName, 'Priyanka D.');
+
+    // The email will not move without the password...
+    const unproven = await app.request('/api/auth/profile', {
+      method: 'PATCH', token, body: { email: 'keys@meetmillions.test' },
+    });
+    assert.equal(unproven.status, 422);
+    const wrong = await app.request('/api/auth/profile', {
+      method: 'PATCH', token, body: { email: 'keys@meetmillions.test', currentPassword: 'not-it-1Aa' },
+    });
+    assert.equal(wrong.status, 422);
+
+    // ...and moves with it, after which the OLD address is dead and the new
+    // one signs in at the platform entrance.
+    const moved = await app.request('/api/auth/profile', {
+      method: 'PATCH', token, body: { email: 'keys@meetmillions.test', currentPassword: platform.password },
+    });
+    assert.equal(moved.status, 200, JSON.stringify(moved.body));
+
+    const oldDoor = await app.request('/api/auth/login', {
+      method: 'POST', body: { email: platform.email, password: platform.password, portal: 'platform' },
+    });
+    assert.equal(oldDoor.status, 401, 'the old address no longer signs in');
+    const newDoor = await app.request('/api/auth/login', {
+      method: 'POST', body: { email: 'keys@meetmillions.test', password: platform.password, portal: 'platform' },
+    });
+    assert.equal(newDoor.status, 200, JSON.stringify(newDoor.body));
+
+    // And the change is audited with both addresses.
+    const { Db } = await import('../src/db/client.js');
+    const db = new Db(app.env.DB);
+    const entry = await db.one("SELECT old_value_json, new_value_json FROM audit_logs WHERE action = 'auth.email_changed' LIMIT 1");
+    assert.ok(entry, 'the email change is in the trail');
+    assert.match(entry.old_value_json, /owner@meetmillions\.test/);
+  });
+
+  test('an organisation user gets the same self-service, inside their own walls', async () => {
+    const app = await createApp();
+    const { res } = await registerOrg(app);
+    const token = res.data.token;
+
+    const rename = await app.request('/api/auth/profile', {
+      method: 'PATCH', token, body: { fullName: 'Asha M.' },
+    });
+    assert.equal(rename.status, 200, JSON.stringify(rename.body));
+
+    // A colleague's address cannot be taken.
+    const { createUserWithRole } = await import('./helpers/app.js');
+    const { firstTenantId } = await import('./helpers/app.js');
+    const tenantId = await firstTenantId(app);
+    await createUserWithRole(app, {
+      tenantId, email: 'taken@meridiantax.test', fullName: 'Vikram Rao', roleKey: 'accountant',
+    });
+    const clash = await app.request('/api/auth/profile', {
+      method: 'PATCH', token,
+      body: { email: 'taken@meridiantax.test', currentPassword: 'Str0ng-Passw0rd!24' },
+    });
+    assert.equal(clash.status, 409);
+  });
+});

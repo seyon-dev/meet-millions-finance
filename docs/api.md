@@ -1,6 +1,6 @@
 # API reference
 
-333 routes across 34 routers. This file is generated from the
+334 routes across 34 routers. This file is generated from the
 routers themselves — `node scripts/gen-api-docs.mjs > docs/api.md` — so it
 cannot drift from the code.
 
@@ -74,6 +74,7 @@ signature instead.
 | POST | `/api/auth/2fa/disable` | signed in |
 | POST | `/api/auth/2fa/backup-codes` | signed in |
 | POST | `/api/auth/2fa/step-up` | signed in |
+| PATCH | `/api/auth/profile` | signed in |
 | GET | `/api/auth/platform-status` | public |
 | POST | `/api/auth/platform-setup` | public |
 | POST | `/api/auth/forgot-password` | public |

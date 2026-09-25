@@ -26,7 +26,9 @@ export default async function profileScreen() {
       subtitle: user.email,
     }),
     el('div.mm-grid.mm-grid-2-1.mm-gap-4',
-      personalCard(user),
+      el('div.mm-stack.mm-gap-4',
+        personalCard(user),
+        emailCard(user)),
       appearanceCard()));
 
   return page;
@@ -50,7 +52,7 @@ function personalCard(user) {
       const submitButton = form.querySelector('button[type=submit]');
       submitButton.disabled = true;
       try {
-        await api.patch(`/users/${user.id}`, {
+        await api.patch('/auth/profile', {
           fullName: fullName.value.trim(),
           phone: phone.value.trim() || undefined,
           jobTitle: jobTitle.value.trim() || undefined,
@@ -84,6 +86,50 @@ function personalCard(user) {
       el('button.mm-btn.mm-btn--primary', { type: 'submit', text: 'Save' })));
 
   return card({ title: 'About you', body: form });
+}
+
+/**
+ * The sign-in email. Changing it re-confirms the password, because an open
+ * laptop must never be enough to move the account to somebody else's address.
+ */
+function emailCard(user) {
+  const email = el('input.mm-input', { type: 'email', value: user.email ?? '', autocomplete: 'email' });
+  const password = el('input.mm-input', { type: 'password', autocomplete: 'current-password', placeholder: 'Your current password' });
+  const errorHost = el('div');
+
+  const form = el('form.mm-form', {
+    novalidate: true,
+    onSubmit: async (e) => {
+      e.preventDefault();
+      errorHost.replaceChildren();
+      const next = email.value.trim();
+      if (!next || next === user.email) {
+        errorHost.replaceChildren(el('p.mm-field__error', { role: 'alert', text: 'Enter a different email address.' }));
+        return;
+      }
+      const submitButton = form.querySelector('button[type=submit]');
+      submitButton.disabled = true;
+      try {
+        await api.patch('/auth/profile', { email: next, currentPassword: password.value });
+        password.value = '';
+        await session.load();
+        notify.success('Your sign-in email is now ' + next + '.');
+      } catch (err) {
+        notifyError(err);
+      } finally {
+        submitButton.disabled = false;
+      }
+    },
+  },
+    errorHost,
+    el('div.mm-field', el('label.mm-field__label', { text: 'Sign-in email' }), email),
+    el('div.mm-field',
+      el('label.mm-field__label', { text: 'Confirm with your password' }), password,
+      el('p.mm-field__hint', { text: 'You will sign in with the new address from now on.' })),
+    el('div.mm-row.mm-end.mm-mt-2',
+      el('button.mm-btn.mm-btn--primary', { type: 'submit', text: 'Change email' })));
+
+  return card({ title: 'Sign-in email', body: form });
 }
 
 /** Theme. Stored per browser rather than per account, deliberately. */
