@@ -274,7 +274,7 @@ try {
         return envelope?.data?.token ?? null;
       }, creds);
 
-      platformToken = await signInThroughApi(PLATFORM_CREDENTIALS);
+      platformToken = await signInThroughApi({ ...PLATFORM_CREDENTIALS, portal: 'platform' });
       if (!platformToken) {
         record('/login', viewport.name, 'blocked',
           'No platform session — the demo Super Admin did not sign in, so /platform/* was not walked.');

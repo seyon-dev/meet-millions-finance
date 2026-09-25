@@ -128,6 +128,9 @@ router.post('/login', async (ctx) => {
     email: { type: 'email', required: true },
     password: { type: 'string', required: true, max: 256 },
     rememberMe: { type: 'boolean', default: false },
+    // The platform owner signs in from the unlisted platform entrance, which
+    // sends portal: 'platform'. Organisation accounts never do.
+    portal: { type: 'enum', values: ['platform'] },
   });
 
   // The route option meters by IP; this adds the per-account dimension so a
@@ -209,6 +212,23 @@ router.post('/login', async (ctx) => {
 
   const anomaly = await detectAnomaly(db, user, { isNewDevice, ip: ctx.ip });
   const identity = await loadIdentity(db, user.id);
+
+  // The two entrances are exclusive, and the check runs only after the
+  // password verified — so it can never be used to discover which addresses
+  // exist. A platform account at the public door is pointed at its own
+  // entrance without naming the path; an organisation account at the
+  // platform entrance is simply refused.
+  const isPlatformAccount = !user.tenant_id && identity.roleKeys.includes('super_admin');
+  if (isPlatformAccount && input.portal !== 'platform') {
+    throw new ForbiddenError(
+      'This account signs in from the platform entrance, not the public sign-in page.',
+      { reason: 'platform_portal_required' });
+  }
+  if (!isPlatformAccount && input.portal === 'platform') {
+    throw new ForbiddenError(
+      'This entrance is for the platform owner. Sign in at the normal page.',
+      { reason: 'not_platform_account' });
+  }
 
   // 2FA: enrolled, or required by policy for this user's roles.
   const roleKeys = identity.roleKeys;
@@ -544,6 +564,92 @@ router.post('/2fa/step-up', async (ctx) => {
 
   return ok({ confirmed: true }, { ctx });
 }, { rateLimit: 'auth.twofa' });
+
+// ---------------------------------------------------------------------------
+// The platform entrance.
+//
+// An unlisted page, not a secret: the path exists in the application's own
+// JavaScript, so the protection is never the URL — it is the credentials,
+// the role check on every platform route, and the claim guard below. On a
+// deployment with no platform owner yet, the entrance offers a one-time
+// claim form instead of a login; the moment an owner exists (claimed here,
+// seeded from PLATFORM_OWNER_*, or created by the demonstration seed) the
+// claim endpoint refuses forever.
+// ---------------------------------------------------------------------------
+router.get('/platform-status', async (ctx) => {
+  const db = new Db(ctx.env.DB);
+  const { platformOwnerExists } = await import('../services/bootstrap.js');
+  return ok({ claimed: await platformOwnerExists(db) }, { ctx });
+}, { ...PUBLIC });
+
+router.post('/platform-setup', async (ctx) => {
+  const body = await ctx.body();
+  const input = validate(body, {
+    fullName: { type: 'string', required: true, max: 120, label: 'Full name' },
+    email: { type: 'email', required: true },
+    password: { type: 'string', required: true, max: 256 },
+  });
+  await consumeAttempt(ctx, 'auth.register', `platform-setup:${ctx.ip}`);
+
+  const db = new Db(ctx.env.DB);
+  const { platformOwnerExists } = await import('../services/bootstrap.js');
+  if (await platformOwnerExists(db)) {
+    throw new ConflictError('This platform already has an owner. Sign in instead.');
+  }
+
+  const policy = checkPasswordPolicy(input.password, {
+    minLength: 12, requireMixed: true, identity: [input.email, input.fullName],
+  });
+  if (!policy.ok) {
+    throw new ValidationError('Choose a stronger password.', { password: policy.errors.join(' ') });
+  }
+  const emailTaken = await db.one(
+    'SELECT id FROM users WHERE email = ? AND deleted_at IS NULL LIMIT 1', [input.email]);
+  if (emailTaken) {
+    throw new ConflictError('An account already exists for that email address.');
+  }
+
+  const role = await db.one("SELECT id FROM roles WHERE key = 'super_admin' AND tenant_id IS NULL");
+  if (!role) throw new ConflictError('The platform has not finished bootstrapping. Try again in a moment.');
+
+  const ts = nowIso();
+  const userId = ID.user();
+  await db.insert('users', {
+    id: userId,
+    tenant_id: null,
+    email: input.email,
+    password_hash: await hashPassword(input.password),
+    full_name: input.fullName,
+    job_title: 'Platform Owner',
+    status: 'active',
+    theme: 'dark',
+    must_change_password: 0,
+    created_at: ts,
+    updated_at: ts,
+  });
+  await db.insert('user_roles', { user_id: userId, role_id: role.id, assigned_by: null, assigned_at: ts });
+
+  ctx.user = { id: userId, email: input.email, full_name: input.fullName };
+  await audit(ctx, {
+    action: 'platform.owner_claimed', category: 'security', severity: 'critical',
+    tenantId: null,
+    actorId: userId, actorName: input.fullName, actorRole: 'super_admin',
+    entityType: 'user', entityId: userId, entityLabel: input.email,
+    newValue: { email: input.email },
+  });
+
+  const { token, session } = await createSession(ctx.env, db, {
+    userId, tenantId: null, ip: ctx.ip, userAgent: ctx.userAgent, twofaSatisfied: true,
+  });
+
+  return created({
+    token,
+    expiresAt: session.expires_at,
+    landing: '/admin/dashboard',
+    nextStep: 'enable_2fa',
+    user: { id: userId, email: input.email, fullName: input.fullName },
+  }, { ctx });
+}, { ...PUBLIC, rateLimit: 'auth.register' });
 
 // ---------------------------------------------------------------------------
 // Password lifecycle

@@ -447,7 +447,7 @@ describe('Hardening', () => {
 
     let login = await app.request('/api/auth/login', {
       method: 'POST',
-      body: { email: 'owner@meetmillions.test', password: 'A-Long-Enough-Passw0rd' },
+      body: { email: 'owner@meetmillions.test', password: 'A-Long-Enough-Passw0rd', portal: 'platform' },
     });
     assert.equal(login.status, 200, JSON.stringify(login.body));
 
@@ -462,7 +462,7 @@ describe('Hardening', () => {
 
     login = await app.request('/api/auth/login', {
       method: 'POST',
-      body: { email: 'owner@meetmillions.test', password: 'Another-Str0ng-Passw0rd' },
+      body: { email: 'owner@meetmillions.test', password: 'Another-Str0ng-Passw0rd', portal: 'platform' },
     });
 
     // The widget polls this on every screen. Before the guard it threw

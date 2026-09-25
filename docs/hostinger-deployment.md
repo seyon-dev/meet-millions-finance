@@ -292,26 +292,39 @@ no restart. If you only need to use the CRM, this is enough.
 
 ### The platform owner: a Super Admin who sees every organisation
 
-1. Add two more environment variables:
-   - `PLATFORM_OWNER_EMAIL` — your email address
-   - `PLATFORM_OWNER_PASSWORD` — a password of at least 12 characters
-2. Restart the application.
-3. Visit `https://your-domain/ready` in a browser. It answers with JSON saying
-   what it set up. Look at `platformOwner`:
+The owner signs in at the **platform entrance**:
+
+    https://your-domain/platform-access
+
+It is linked from nowhere on the website. It is unlisted, not secret — the
+path exists in the application's JavaScript, so the protection is the
+credentials, the server-side role check on every platform route, and
+two-factor, never the URL. The public `/login` refuses the platform account
+(pointing it at its own entrance, only after the correct password), and the
+entrance refuses every organisation account.
+
+**The simple way — claim it on first visit.** On a deployment that has no
+platform owner yet, opening `/platform-access` shows a one-time setup form:
+your name, email and a strong password (12+ characters, mixed, and not
+containing your name or email). Submitting it creates the Super Admin, signs
+you in, and the form never appears again — from then on the page is your
+private sign-in. Do this right after deploying, and turn on two-factor
+immediately (Settings → Security).
+
+**The environment way (alternative).** Set `PLATFORM_OWNER_EMAIL` and
+`PLATFORM_OWNER_PASSWORD` (12+ characters), restart, and check
+`https://your-domain/ready` → `platformOwner`:
 
    | What it says | What happened |
    | --- | --- |
-   | `{"created": true, …}` | The account exists. Sign in. |
+   | `{"created": true, …}` | The account exists. Sign in at `/platform-access`. |
    | `{"created": false, "reason": "not_configured"}` | The variables did not reach the process. Check them, restart again. |
    | `{"created": false, "reason": "password_too_weak"}` | Under 12 characters. |
    | `{"created": false, "reason": "already_exists"}` | There is already a platform owner. |
 
-   This works whether or not the deployment has run before — it is checked on
-   every start, and it will not create a second owner.
-4. Sign in at `https://your-domain/login`. You will be asked to change the
-   password immediately. (`/` is the public landing page; the **Sign in**
-   button on it goes to the same place.)
-5. **Delete those two environment variables** and restart.
+   You will be asked to change the password at first sign-in. **Delete the
+   two variables** and restart afterwards. Once an owner exists — from either
+   path or from the demonstration seed — the claim form is closed forever.
 
 ### Demonstration data, if you want screens with something on them
 

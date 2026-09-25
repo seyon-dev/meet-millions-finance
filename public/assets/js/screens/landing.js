@@ -276,8 +276,5 @@ export default async function landingScreen() {
       el('span', { text: 'Meet Millions Finance CRM' }),
       el('span.mm-landing__foot-links',
         el('a', { href: '/login', text: 'Sign in' }),
-        el('a', { href: '/register', text: 'Create an organisation' }),
-        // The same door with the same lock: platform staff authenticate on
-        // the ordinary sign-in form and their role decides what opens.
-        el('a', { href: '/login', text: 'Super Admin' }))));
+        el('a', { href: '/register', text: 'Create an organisation' }))));
 }

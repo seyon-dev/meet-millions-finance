@@ -26,7 +26,7 @@ describe('Support access', () => {
       roleKey: 'super_admin',
     });
     const login = await app.request('/api/auth/login', {
-      method: 'POST', body: { email: platform.email, password: platform.password },
+      method: 'POST', body: { email: platform.email, password: platform.password, portal: 'platform' },
     });
     assert.equal(login.status, 200, JSON.stringify(login.body));
     return { app, tenantId, orgToken, orgAdmin, platform, platformToken: login.data.token };

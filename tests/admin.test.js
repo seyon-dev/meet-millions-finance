@@ -21,7 +21,7 @@ describe('Administration', () => {
 
   async function tokenFor(app, user) {
     const res = await app.request('/api/auth/login', {
-      method: 'POST', body: { email: user.email, password: user.password },
+      method: 'POST', body: { email: user.email, password: user.password, portal: user.portal },
     });
     assert.equal(res.status, 200, JSON.stringify(res.body));
     return res.data.token;

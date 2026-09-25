@@ -17,6 +17,10 @@ const PUBLIC_PATHS = new Set([
   // No '/accept-invite': nothing registers that route and no email carries
   // that link — invitations send a temporary password and point at /login.
   '/', '/login', '/register', '/forgot-password', '/reset-password', '/verify-2fa',
+  // The platform owner's unlisted entrance. Linked from nowhere on the site;
+  // the server refuses organisation accounts on it and refuses the platform
+  // account everywhere else, so the URL is a convenience, never the lock.
+  '/platform-access',
 ]);
 
 const root = document.getElementById('mm-app');
@@ -151,6 +155,7 @@ function registerRoutes() {
 
   // -- Public -------------------------------------------------------------
   route('/login', () => import('./screens/auth/login.js'));
+  route('/platform-access', () => import('./screens/auth/platform-login.js'));
   route('/register', () => import('./screens/auth/register.js'));
   route('/forgot-password', () => import('./screens/auth/forgot-password.js'));
   route('/reset-password', () => import('./screens/auth/reset-password.js'));

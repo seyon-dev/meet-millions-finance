@@ -1,6 +1,6 @@
 # API reference
 
-331 routes across 34 routers. This file is generated from the
+333 routes across 34 routers. This file is generated from the
 routers themselves — `node scripts/gen-api-docs.mjs > docs/api.md` — so it
 cannot drift from the code.
 
@@ -44,7 +44,7 @@ The front end switches on `error.code`, not on the status:
 ## Authentication
 
 Send the session token as `Authorization: Bearer <token>`, or a machine key as
-`X-Api-Key: <key>`. 15 routes are public — registration, sign-in,
+`X-Api-Key: <key>`. 17 routes are public — registration, sign-in,
 password reset, signed file links and the vendor webhooks, which authenticate by
 signature instead.
 
@@ -74,6 +74,8 @@ signature instead.
 | POST | `/api/auth/2fa/disable` | signed in |
 | POST | `/api/auth/2fa/backup-codes` | signed in |
 | POST | `/api/auth/2fa/step-up` | signed in |
+| GET | `/api/auth/platform-status` | public |
+| POST | `/api/auth/platform-setup` | public |
 | POST | `/api/auth/forgot-password` | public |
 | POST | `/api/auth/reset-password` | public |
 | POST | `/api/auth/change-password` | signed in |

@@ -66,7 +66,7 @@ Demo-Passw0rd!24
 
 | Role | Email | Lands on |
 | --- | --- | --- |
-| Super Admin | `devika@meetmillions.example` | `/admin/dashboard` |
+| Super Admin | `devika@meetmillions.example` (signs in at `/platform-access`, not `/login`) | `/admin/dashboard` |
 
 Devika Ramanathan sits above every organisation and belongs to no tenant.
 The Super Admin screens are under **Platform** in the sidebar:

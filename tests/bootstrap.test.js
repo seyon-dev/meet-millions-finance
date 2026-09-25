@@ -81,7 +81,7 @@ describe('Deployment bootstrap', () => {
     // And it really can sign in.
     const login = await app.request('/api/auth/login', {
       method: 'POST',
-      body: { email: 'owner@meetmillions.test', password: 'A-Long-Enough-Passw0rd' },
+      body: { email: 'owner@meetmillions.test', password: 'A-Long-Enough-Passw0rd', portal: 'platform' },
     });
     assert.equal(login.status, 200, JSON.stringify(login.body));
     assert.equal(login.data.mustChangePassword, true);

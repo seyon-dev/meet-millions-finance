@@ -150,6 +150,17 @@ export async function bootstrapPlatform(env, { verbose = false } = {}) {
  * There is deliberately no default password. A product that ships with one
  * ships with a way in for everybody who has read its documentation.
  */
+/** Is the platform claimed — does a tenantless Super Admin exist? */
+export async function platformOwnerExists(db) {
+  const role = await db.one("SELECT id FROM roles WHERE key = 'super_admin' AND tenant_id IS NULL");
+  if (!role) return false;
+  const existing = await db.one(
+    `SELECT u.id FROM users u
+       JOIN user_roles ur ON ur.user_id = u.id
+      WHERE u.tenant_id IS NULL AND ur.role_id = ? AND u.deleted_at IS NULL LIMIT 1`, [role.id]);
+  return !!existing;
+}
+
 async function seedPlatformOwner(db, env, ts) {
   const email = (env.PLATFORM_OWNER_EMAIL ?? '').trim().toLowerCase();
   const password = env.PLATFORM_OWNER_PASSWORD ?? '';
