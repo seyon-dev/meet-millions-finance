@@ -22,6 +22,8 @@ import { formatINR } from '../utils/money.js';
 import { audit } from '../services/audit.js';
 import { provisionTenant } from '../services/provisioning.js';
 import { revokeAllUserSessions } from '../auth/session.js';
+import { recordSubscriptionEvent, listSubscriptionEvents } from '../services/subscription-events.js';
+import { dispatchNotification } from '../services/notifications.js';
 import { PLANS, PLAN_COMPARISON } from '../data/plans.js';
 import { ADDONS } from '../data/addons.js';
 
@@ -51,14 +53,19 @@ router.get('/tenants', async (ctx) => {
   const sort = safeOrder(ctx.q('sort', 'created_at'), ctx.q('dir', 'desc'),
     ['created_at', 'name', 'status'], 'created_at');
 
+  // The LATEST subscription, whatever its state: a lapsed or cancelled
+  // subscription is exactly what this screen exists to surface, so filtering
+  // to healthy statuses here would hide the organisations that need help.
   const rows = await db.many(
     `SELECT t.*, p.key AS plan_key, p.name AS plan_name, s.status AS subscription_status,
-            s.current_period_end, f.name AS franchise_name,
+            s.current_period_end, s.trial_ends_at, s.grace_until, f.name AS franchise_name,
             (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id AND u.deleted_at IS NULL) AS user_count,
             (SELECT COUNT(*) FROM clients c WHERE c.tenant_id = t.id AND c.deleted_at IS NULL) AS client_count,
-            (SELECT COUNT(*) FROM documents d WHERE d.tenant_id = t.id AND d.deleted_at IS NULL) AS document_count
+            (SELECT COUNT(*) FROM documents d WHERE d.tenant_id = t.id AND d.deleted_at IS NULL) AS document_count,
+            (SELECT MAX(u.last_login_at) FROM users u WHERE u.tenant_id = t.id) AS last_activity_at
        FROM tenants t
-       LEFT JOIN subscriptions s ON s.tenant_id = t.id AND s.status IN ('active','trialing','past_due')
+       LEFT JOIN subscriptions s ON s.id =
+         (SELECT s2.id FROM subscriptions s2 WHERE s2.tenant_id = t.id ORDER BY s2.created_at DESC LIMIT 1)
        LEFT JOIN plans p ON p.id = s.plan_id
        LEFT JOIN franchises f ON f.id = t.franchise_id
        ${where} ORDER BY t.${sort} LIMIT ? OFFSET ?`,
@@ -66,15 +73,23 @@ router.get('/tenants', async (ctx) => {
 
   const total = await db.count(
     `SELECT COUNT(*) AS n FROM tenants t
-       LEFT JOIN subscriptions s ON s.tenant_id = t.id AND s.status IN ('active','trialing','past_due')
+       LEFT JOIN subscriptions s ON s.id =
+         (SELECT s2.id FROM subscriptions s2 WHERE s2.tenant_id = t.id ORDER BY s2.created_at DESC LIMIT 1)
        LEFT JOIN plans p ON p.id = s.plan_id ${where}`, params);
 
   const counts = await db.one(
     `SELECT COUNT(*) AS total,
             SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
             SUM(CASE WHEN status = 'trial' THEN 1 ELSE 0 END) AS trial,
-            SUM(CASE WHEN status = 'suspended' THEN 1 ELSE 0 END) AS suspended
+            SUM(CASE WHEN status = 'suspended' THEN 1 ELSE 0 END) AS suspended,
+            SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled
        FROM tenants WHERE deleted_at IS NULL`);
+
+  const subStates = await db.many(
+    `SELECT s.status, COUNT(*) AS n FROM subscriptions s
+       JOIN (SELECT tenant_id, MAX(created_at) AS mc FROM subscriptions GROUP BY tenant_id) latest
+         ON latest.tenant_id = s.tenant_id AND latest.mc = s.created_at
+      GROUP BY s.status`);
 
   return paginated(rows.map(toTenant), {
     page, pageSize, total,
@@ -83,6 +98,8 @@ router.get('/tenants', async (ctx) => {
       active: Number(counts?.active) || 0,
       trial: Number(counts?.trial) || 0,
       suspended: Number(counts?.suspended) || 0,
+      cancelled: Number(counts?.cancelled) || 0,
+      subscriptions: Object.fromEntries(subStates.map(r => [r.status, Number(r.n)])),
     },
   }, ctx);
 }, { permission: 'tenants.view' });
@@ -118,9 +135,22 @@ router.get('/tenants/:id', async (ctx) => {
       ORDER BY u.created_at LIMIT 10`, [ctx.params.id]);
 
   const invoices = await db.many(
-    `SELECT id, invoice_no, status, total_paise, amount_due_paise, issue_date, due_date
+    `SELECT id, invoice_no, status, total_paise, amount_paid_paise, amount_due_paise, issue_date, due_date
        FROM invoices WHERE tenant_id = ? AND direction = 'platform_to_tenant'
       ORDER BY issue_date DESC LIMIT 12`, [ctx.params.id]);
+
+  const users = await db.many(
+    `SELECT u.id, u.full_name, u.email, u.status, u.last_login_at, u.created_at,
+            (SELECT r.name FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+              WHERE ur.user_id = u.id ORDER BY r.level DESC LIMIT 1) AS role_name
+       FROM users u WHERE u.tenant_id = ? AND u.deleted_at IS NULL
+      ORDER BY u.created_at LIMIT 100`, [ctx.params.id]);
+
+  const activity = await db.many(
+    `SELECT id, action, category, severity, actor_name, entity_type, entity_label, created_at
+       FROM audit_logs WHERE tenant_id = ? ORDER BY sequence DESC LIMIT 15`, [ctx.params.id]);
+
+  const events = await listSubscriptionEvents(db, ctx.params.id, { limit: 30 });
 
   return ok({
     tenant: toTenant(tenant),
@@ -134,7 +164,13 @@ router.get('/tenants/:id', async (ctx) => {
       storageBytes: Number(usage?.storage_bytes) || 0,
     },
     owners,
+    users: users.map(u => ({
+      id: u.id, fullName: u.full_name, email: u.email, status: u.status,
+      roleName: u.role_name, lastLoginAt: u.last_login_at, createdAt: u.created_at,
+    })),
     invoices,
+    activity,
+    events,
   }, { ctx });
 }, { permission: 'tenants.view' });
 
@@ -206,24 +242,43 @@ router.patch('/tenants/:id', async (ctx) => {
   const body = await ctx.body();
   const input = validate(body, {
     name: { type: 'string', max: 160 },
+    legalName: { type: 'string', max: 200 },
     status: { type: 'enum', values: ['active', 'trial', 'suspended', 'cancelled'] },
     email: { type: 'email' },
     phone: { type: 'phone' },
+    gstin: { type: 'gstin' },
+    pan: { type: 'pan' },
+    tan: { type: 'tan' },
+    addressLine1: { type: 'string', max: 200 },
+    addressLine2: { type: 'string', max: 200 },
+    city: { type: 'string', max: 100 },
+    state: { type: 'string', max: 100 },
+    stateCode: { type: 'string', max: 2 },
+    pincode: { type: 'string', max: 10 },
+    timezone: { type: 'string', max: 60 },
     franchiseId: { type: 'id' },
     reason: { type: 'text', max: 500 },
   });
 
   const patch = {};
   for (const [field, column] of Object.entries({
-    name: 'name', status: 'status', email: 'email', phone: 'phone', franchiseId: 'franchise_id',
+    name: 'name', legalName: 'legal_name', status: 'status', email: 'email', phone: 'phone',
+    gstin: 'gstin', pan: 'pan', tan: 'tan',
+    addressLine1: 'address_line1', addressLine2: 'address_line2', city: 'city', state: 'state',
+    stateCode: 'state_code', pincode: 'pincode', timezone: 'timezone', franchiseId: 'franchise_id',
   })) {
     if (input[field] !== null && input[field] !== undefined) patch[column] = input[field];
   }
   if (!Object.keys(patch).length) throw new BadRequestError('Nothing to update.');
 
-  // Suspending an organisation has to end its sessions, or the change is
-  // advisory: everyone stays signed in until their token happens to expire.
-  if (patch.status && patch.status !== 'active' && tenant.status === 'active') {
+  const blocking = patch.status && ['suspended', 'cancelled'].includes(patch.status)
+    && tenant.status !== patch.status;
+  const restoring = patch.status === 'active' && ['suspended', 'cancelled'].includes(tenant.status);
+
+  // Blocking an organisation has to end its sessions, whatever state it was
+  // in before — a trial organisation's sessions are as alive as an active
+  // one's, and leaving either signed in makes the change advisory.
+  if (blocking) {
     if (!input.reason) {
       throw new BadRequestError('Give a reason when suspending or cancelling an organisation.');
     }
@@ -237,14 +292,31 @@ router.patch('/tenants/:id', async (ctx) => {
   await db.update('tenants', { id: ctx.params.id }, { ...patch, updated_at: nowIso() });
 
   await audit(ctx, {
-    action: patch.status && patch.status !== 'active' ? 'platform.tenant_suspended' : 'platform.tenant_updated',
+    action: blocking ? 'platform.tenant_suspended'
+      : restoring ? 'platform.tenant_reactivated' : 'platform.tenant_updated',
     category: 'general',
-    severity: patch.status && patch.status !== 'active' ? 'warning' : 'info',
+    severity: blocking ? 'warning' : 'info',
     tenantId: null,
     entityType: 'tenant', entityId: ctx.params.id, entityLabel: tenant.name,
     oldValue: { status: tenant.status, name: tenant.name },
     newValue: { ...patch, reason: input.reason ?? null },
   });
+
+  // A status change is a lifecycle fact the billing ledger keeps, and the
+  // organisation's administrators are told in plain words what happened.
+  if (blocking || restoring) {
+    await recordSubscriptionEvent(db, {
+      tenantId: ctx.params.id,
+      kind: blocking ? 'suspended' : 'reactivated',
+      actorId: ctx.userId, actorName: ctx.user?.full_name ?? null,
+      oldValue: { status: tenant.status }, newValue: { status: patch.status },
+      note: input.reason ?? null,
+    });
+    ctx.defer(notifyTenantAdmins(ctx, db, ctx.params.id, {
+      triggerKey: blocking ? 'platform.suspended' : 'platform.reactivated',
+      variables: { organisation: tenant.name, message: input.reason ?? '' },
+    }));
+  }
 
   const fresh = await db.one('SELECT * FROM tenants WHERE id = ?', [ctx.params.id]);
   return ok({ tenant: toTenant(fresh) }, { ctx });
@@ -288,16 +360,17 @@ router.post('/tenants/:id/plan', async (ctx) => {
     overages.push(`${usage.companies} companies against a limit of ${plan.max_companies}`);
   }
 
+  // The limits live on the plan row and are read from there by the
+  // entitlement checks — subscriptions has no limit columns of its own.
+  // (Writing them here was this endpoint's oldest bug: the UPDATE named
+  // columns the table does not have, and every platform plan change 500d.)
   await db.update('subscriptions', { id: subscription.id }, {
     plan_id: plan.id,
     status: input.trialDays ? 'trialing' : 'active',
     trial_ends_at: input.trialDays ? addDays(input.trialDays) : null,
+    grace_until: null,
     current_period_start: nowIso(),
     current_period_end: addMonths(1),
-    max_users: plan.max_users,
-    max_companies: plan.max_companies,
-    storage_gb: plan.storage_gb,
-    max_uploads_month: plan.max_uploads_month,
     updated_at: nowIso(),
   });
 
@@ -307,6 +380,12 @@ router.post('/tenants/:id/plan', async (ctx) => {
     entityType: 'subscription', entityId: subscription.id, entityLabel: tenant.name,
     oldValue: { plan: previous?.key },
     newValue: { plan: plan.key, reason: input.reason ?? null, byPlatform: true },
+  });
+  await recordSubscriptionEvent(db, {
+    tenantId: ctx.params.id, subscriptionId: subscription.id, kind: 'plan_changed',
+    actorId: ctx.userId, actorName: ctx.user?.full_name ?? null,
+    oldValue: { plan: previous?.key }, newValue: { plan: plan.key, trialDays: input.trialDays ?? null },
+    note: input.reason ?? null,
   });
 
   return ok({
@@ -319,6 +398,227 @@ router.post('/tenants/:id/plan', async (ctx) => {
       ? 'The organisation is over its new limits. Existing records are untouched; new ones will be refused until it is back within them.'
       : null,
   }, { ctx });
+}, { permission: 'tenants.update' });
+
+/**
+ * Adjust a subscription without changing its plan: extend the period, set a
+ * trial end, move it between lifecycle states, or set a grace window. This is
+ * the platform owner's manual override, so transitions are permissive — but
+ * every one lands in the ledger with who did it and why.
+ */
+router.patch('/tenants/:id/subscription', async (ctx) => {
+  const db = new Db(ctx.env.DB);
+  const tenant = await db.one('SELECT * FROM tenants WHERE id = ?', [ctx.params.id]);
+  if (!tenant) throw new NotFoundError('Organisation');
+
+  const body = await ctx.body();
+  const input = validate(body, {
+    extendDays: { type: 'int', min: 1, max: 366 },
+    periodEnd: { type: 'date' },
+    trialEndsAt: { type: 'date' },
+    status: { type: 'enum', values: ['trialing', 'active', 'past_due', 'paused', 'cancelled', 'expired'] },
+    graceDays: { type: 'int', min: 0, max: 90 },
+    note: { type: 'text', max: 500 },
+  });
+
+  const subscription = await db.one(
+    'SELECT * FROM subscriptions WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 1',
+    [ctx.params.id]);
+  if (!subscription) throw new NotFoundError('Subscription');
+
+  const patch = {};
+  const changes = [];
+
+  if (input.extendDays) {
+    const base = new Date(subscription.current_period_end) > new Date() ? new Date(subscription.current_period_end) : new Date();
+    patch.current_period_end = addDays(input.extendDays, base);
+    changes.push({ kind: 'period_extended', oldValue: { currentPeriodEnd: subscription.current_period_end }, newValue: { currentPeriodEnd: patch.current_period_end, extendDays: input.extendDays } });
+  }
+  if (input.periodEnd) {
+    patch.current_period_end = input.periodEnd;
+    changes.push({ kind: 'period_extended', oldValue: { currentPeriodEnd: subscription.current_period_end }, newValue: { currentPeriodEnd: input.periodEnd } });
+  }
+  if (input.trialEndsAt) {
+    patch.trial_ends_at = input.trialEndsAt;
+    if (!input.status) patch.status = 'trialing';
+    changes.push({ kind: 'trial_extended', oldValue: { trialEndsAt: subscription.trial_ends_at }, newValue: { trialEndsAt: input.trialEndsAt } });
+  }
+  if (input.graceDays !== null && input.graceDays !== undefined) {
+    patch.grace_until = input.graceDays === 0 ? null : addDays(input.graceDays);
+    changes.push({ kind: 'status_changed', oldValue: { graceUntil: subscription.grace_until }, newValue: { graceUntil: patch.grace_until } });
+  }
+  if (input.status && input.status !== subscription.status) {
+    patch.status = input.status;
+    changes.push({ kind: 'status_changed', oldValue: { status: subscription.status }, newValue: { status: input.status } });
+  }
+
+  if (!Object.keys(patch).length) throw new BadRequestError('Nothing to change.');
+
+  await db.update('subscriptions', { id: subscription.id }, { ...patch, updated_at: nowIso() });
+
+  for (const change of changes) {
+    await recordSubscriptionEvent(db, {
+      tenantId: ctx.params.id, subscriptionId: subscription.id, kind: change.kind,
+      actorId: ctx.userId, actorName: ctx.user?.full_name ?? null,
+      oldValue: change.oldValue, newValue: change.newValue, note: input.note ?? null,
+    });
+  }
+
+  await audit(ctx, {
+    action: 'billing.subscription_adjusted', category: 'billing', severity: 'notice',
+    tenantId: ctx.params.id,
+    entityType: 'subscription', entityId: subscription.id, entityLabel: tenant.name,
+    oldValue: { status: subscription.status, currentPeriodEnd: subscription.current_period_end, trialEndsAt: subscription.trial_ends_at },
+    newValue: { ...patch, note: input.note ?? null },
+  });
+
+  const fresh = await db.one(
+    `SELECT s.*, p.key AS plan_key, p.name AS plan_name FROM subscriptions s
+       JOIN plans p ON p.id = s.plan_id WHERE s.id = ?`, [subscription.id]);
+  return ok({ subscription: fresh }, { ctx });
+}, { permission: 'tenants.update', stepUp: true });
+
+/**
+ * Record a payment the organisation made outside a gateway — a bank
+ * transfer, a cheque, an adjustment. Settles against a platform invoice when
+ * one is named, and always lands in the ledger.
+ */
+router.post('/tenants/:id/payments', async (ctx) => {
+  const db = new Db(ctx.env.DB);
+  const tenant = await db.one('SELECT * FROM tenants WHERE id = ?', [ctx.params.id]);
+  if (!tenant) throw new NotFoundError('Organisation');
+
+  const body = await ctx.body();
+  const input = validate(body, {
+    amountPaise: { type: 'int', required: true, min: 1, max: 10_000_000_000 },
+    method: { type: 'enum', values: ['bank_transfer', 'upi', 'cash', 'cheque', 'net_banking'], default: 'bank_transfer' },
+    reference: { type: 'string', max: 100 },
+    invoiceId: { type: 'id' },
+    note: { type: 'text', max: 500 },
+  });
+
+  let invoice = null;
+  if (input.invoiceId) {
+    invoice = await db.one(
+      "SELECT * FROM invoices WHERE id = ? AND tenant_id = ? AND direction = 'platform_to_tenant'",
+      [input.invoiceId, ctx.params.id]);
+    if (!invoice) throw new NotFoundError('Invoice');
+  }
+
+  const subscription = await db.one(
+    'SELECT id FROM subscriptions WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 1',
+    [ctx.params.id]);
+
+  const reference = input.reference || `MANUAL-${Date.now()}`;
+  const payment = {
+    id: ID.payment(),
+    tenant_id: ctx.params.id,
+    invoice_id: invoice?.id ?? null,
+    client_id: null,
+    subscription_id: subscription?.id ?? null,
+    reference_no: reference,
+    gateway: 'manual',
+    method: input.method,
+    amount_paise: input.amountPaise,
+    currency: 'INR',
+    status: 'success',
+    initiated_by: ctx.userId,
+    paid_at: nowIso(),
+    created_at: nowIso(),
+    updated_at: nowIso(),
+  };
+  await db.insert('payments', payment);
+
+  if (invoice) {
+    const paid = Number(invoice.amount_paid_paise) + input.amountPaise;
+    const due = Math.max(0, Number(invoice.total_paise) - paid);
+    await db.update('invoices', { id: invoice.id }, {
+      amount_paid_paise: paid,
+      amount_due_paise: due,
+      status: due === 0 ? 'paid' : 'partially_paid',
+      paid_at: due === 0 ? nowIso() : invoice.paid_at,
+      updated_at: nowIso(),
+    });
+  }
+
+  await recordSubscriptionEvent(db, {
+    tenantId: ctx.params.id, subscriptionId: subscription?.id ?? null, kind: 'payment_recorded',
+    actorId: ctx.userId, actorName: ctx.user?.full_name ?? null,
+    newValue: {
+      amountPaise: input.amountPaise, method: input.method, reference,
+      invoiceNo: invoice?.invoice_no ?? null,
+    },
+    note: input.note ?? null,
+  });
+
+  await audit(ctx, {
+    action: 'billing.payment_recorded', category: 'billing', severity: 'notice',
+    tenantId: ctx.params.id,
+    entityType: 'payment', entityId: payment.id, entityLabel: `${tenant.name} — ${formatINR(input.amountPaise)}`,
+    newValue: { amountPaise: input.amountPaise, method: input.method, reference, invoiceId: invoice?.id ?? null, byPlatform: true },
+  });
+
+  return created({ payment: { id: payment.id, reference, amountPaise: input.amountPaise, status: 'success' } }, { ctx });
+}, { permission: 'tenants.update', stepUp: true });
+
+/**
+ * Send a notice from the platform to an organisation's administrators — a
+ * payment or renewal reminder, a suspension warning, or an announcement.
+ * Lands in their notification centre, goes out by email where email is
+ * configured, and is remembered in the ledger so "when did we last remind
+ * them" has an answer.
+ */
+router.post('/tenants/:id/notify', async (ctx) => {
+  const db = new Db(ctx.env.DB);
+  const tenant = await db.one('SELECT * FROM tenants WHERE id = ?', [ctx.params.id]);
+  if (!tenant) throw new NotFoundError('Organisation');
+
+  const body = await ctx.body();
+  const input = validate(body, {
+    kind: {
+      type: 'enum', required: true,
+      values: ['announcement', 'payment_reminder', 'trial_reminder', 'renewal_reminder', 'suspension_warning'],
+    },
+    subject: { type: 'string', max: 160 },
+    message: { type: 'text', max: 2000 },
+  });
+
+  const subscription = await db.one(
+    `SELECT s.*, p.name AS plan_name FROM subscriptions s JOIN plans p ON p.id = s.plan_id
+      WHERE s.tenant_id = ? ORDER BY s.created_at DESC LIMIT 1`, [ctx.params.id]);
+
+  const recipients = await notifyTenantAdmins(ctx, db, ctx.params.id, {
+    triggerKey: `platform.${input.kind}`,
+    variables: {
+      organisation: tenant.name,
+      subject: input.subject ?? 'A notice from Meet Millions',
+      message: input.message ?? '',
+      planName: subscription?.plan_name ?? '',
+      renewalDate: subscription?.current_period_end?.slice(0, 10) ?? '',
+      trialEndsAt: subscription?.trial_ends_at?.slice(0, 10) ?? '',
+      amountLine: '',
+      whenLine: '',
+    },
+  });
+  if (!recipients) {
+    throw new ConflictError('This organisation has no active administrators to notify.');
+  }
+
+  await recordSubscriptionEvent(db, {
+    tenantId: ctx.params.id, subscriptionId: subscription?.id ?? null, kind: 'reminder_sent',
+    actorId: ctx.userId, actorName: ctx.user?.full_name ?? null,
+    newValue: { kind: input.kind, subject: input.subject ?? null, recipients },
+    note: input.message ? input.message.slice(0, 200) : null,
+  });
+
+  await audit(ctx, {
+    action: 'platform.notice_sent', category: 'billing', severity: 'info',
+    tenantId: ctx.params.id,
+    entityType: 'tenant', entityId: ctx.params.id, entityLabel: tenant.name,
+    newValue: { kind: input.kind, subject: input.subject ?? null, recipients },
+  });
+
+  return ok({ sent: true, recipients, kind: input.kind }, { ctx });
 }, { permission: 'tenants.update' });
 
 /**
@@ -338,6 +638,8 @@ router.post('/tenants/:id/impersonate', async (ctx) => {
     userId: { type: 'id', required: true },
     reason: { type: 'text', required: true, max: 500, label: 'Reason' },
     minutes: { type: 'int', min: 5, max: 120, default: 30 },
+    // 'view' reads without the ability to change anything; 'support' may act.
+    mode: { type: 'enum', values: ['view', 'support'], default: 'support' },
   });
 
   const target = await db.one(
@@ -355,6 +657,12 @@ router.post('/tenants/:id/impersonate', async (ctx) => {
     // Already satisfied: the platform user cleared their own step-up to get
     // here, and the target's second factor is not ours to present.
     twofaSatisfied: true,
+    // The session carries who really holds it: the identity middleware lets
+    // it into a suspended organisation, the audit trail attributes every
+    // action to this administrator, and view mode is enforced server-side.
+    impersonatorUserId: ctx.userId,
+    impersonatorLabel: `${ctx.user.full_name} <${ctx.user.email}>`,
+    impersonationMode: input.mode,
   });
 
   // Both trails. The platform's, and the organisation's own.
@@ -362,20 +670,21 @@ router.post('/tenants/:id/impersonate', async (ctx) => {
     action: 'platform.impersonation_started', category: 'security', severity: 'critical',
     tenantId: null,
     entityType: 'user', entityId: target.id, entityLabel: target.full_name,
-    newValue: { tenant: tenant.name, reason: input.reason, minutes: input.minutes },
+    newValue: { tenant: tenant.name, reason: input.reason, minutes: input.minutes, mode: input.mode },
   });
   await audit(ctx, {
     action: 'platform.impersonation_started', category: 'security', severity: 'critical',
     tenantId: tenant.id,
     entityType: 'user', entityId: target.id, entityLabel: target.full_name,
-    newValue: { by: ctx.user.email, reason: input.reason, minutes: input.minutes },
+    newValue: { by: ctx.user.email, reason: input.reason, minutes: input.minutes, mode: input.mode },
   });
 
   return created({
     token,
     expiresAt: session.expires_at,
+    mode: input.mode,
     impersonating: { id: target.id, name: target.full_name, email: target.email },
-    tenant: { id: tenant.id, name: tenant.name },
+    tenant: { id: tenant.id, name: tenant.name, status: tenant.status },
     notice: 'This session is recorded in the organisation\'s own audit trail.',
   }, { ctx });
 }, { permission: 'users.impersonate', stepUp: true });
@@ -716,6 +1025,28 @@ router.get('/logs', async (ctx) => {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+/**
+ * Deliver a platform notice to every active administrator of an organisation.
+ * Returns how many people were addressed (0 = nobody to notify).
+ */
+async function notifyTenantAdmins(ctx, db, tenantId, { triggerKey, variables }) {
+  const admins = await db.many(
+    `SELECT u.id FROM users u
+       JOIN user_roles ur ON ur.user_id = u.id
+       JOIN roles r ON r.id = ur.role_id
+      WHERE u.tenant_id = ? AND r.key = 'admin' AND u.status = 'active' AND u.deleted_at IS NULL`,
+    [tenantId]);
+  if (!admins.length) return 0;
+  await dispatchNotification(ctx, {
+    triggerKey,
+    tenantId,
+    userIds: admins.map(a => a.id),
+    variables,
+    link: { path: '/billing/subscription' },
+  });
+  return admins.length;
+}
+
 function toTenant(t) {
   return {
     id: t.id,
@@ -726,7 +1057,14 @@ function toTenant(t) {
     phone: t.phone,
     gstin: t.gstin,
     pan: t.pan,
+    tan: t.tan,
+    addressLine1: t.address_line1,
+    addressLine2: t.address_line2,
+    city: t.city,
+    state: t.state,
+    pincode: t.pincode,
     stateCode: t.state_code,
+    timezone: t.timezone,
     status: t.status,
     franchiseId: t.franchise_id,
     franchiseName: t.franchise_name ?? null,
@@ -734,6 +1072,9 @@ function toTenant(t) {
     planName: t.plan_name ?? null,
     subscriptionStatus: t.subscription_status ?? null,
     currentPeriodEnd: t.current_period_end ?? null,
+    trialEndsAt: t.trial_ends_at ?? null,
+    graceUntil: t.grace_until ?? null,
+    lastActivityAt: t.last_activity_at ?? null,
     isDemo: !!t.is_demo,
     onboardingStep: t.onboarding_step,
     userCount: t.user_count === undefined ? undefined : Number(t.user_count),

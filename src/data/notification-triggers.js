@@ -47,6 +47,16 @@ export const NOTIFICATION_TRIGGERS = [
   { key: 'subscription.renewal',      name: 'Subscription renewal due',   category: 'Billing',  audience: 'admin',  defaultChannels: ['email', 'in_app'] },
   { key: 'subscription.expired',      name: 'Subscription expired',       category: 'Billing',  audience: 'admin',  defaultChannels: ['email', 'in_app'] },
 
+  // Platform -> organisation: sent by the Meet Millions platform itself, to an
+  // organisation's administrators, about the organisation's own account.
+  { key: 'platform.announcement',       name: 'Platform announcement',         category: 'Platform', audience: 'admin', defaultChannels: ['email', 'in_app'] },
+  { key: 'platform.payment_reminder',   name: 'Platform payment reminder',     category: 'Platform', audience: 'admin', defaultChannels: ['email', 'in_app'] },
+  { key: 'platform.trial_reminder',     name: 'Trial ending reminder',         category: 'Platform', audience: 'admin', defaultChannels: ['email', 'in_app'] },
+  { key: 'platform.renewal_reminder',   name: 'Subscription renewal reminder', category: 'Platform', audience: 'admin', defaultChannels: ['email', 'in_app'] },
+  { key: 'platform.suspension_warning', name: 'Suspension warning',            category: 'Platform', audience: 'admin', defaultChannels: ['email', 'in_app'] },
+  { key: 'platform.suspended',          name: 'Organisation suspended',        category: 'Platform', audience: 'admin', defaultChannels: ['email', 'in_app'] },
+  { key: 'platform.reactivated',        name: 'Organisation reactivated',      category: 'Platform', audience: 'admin', defaultChannels: ['email', 'in_app'] },
+
   // ---- Statutory reminders (the proposal's Automation Layer) ---------------
   { key: 'gst.due_date',              name: 'GST due date reminder',      category: 'Reminders', audience: 'client', defaultChannels: ['email', 'sms', 'whatsapp', 'in_app'] },
   { key: 'reminder.monthly',          name: 'Monthly document reminder',  category: 'Reminders', audience: 'client', defaultChannels: ['email', 'whatsapp'] },
@@ -150,6 +160,21 @@ export const DEFAULT_TEMPLATES = [
 
   ['insights.weekly_digest', 'email', 'Your weekly insight digest',
     'Hello {{name}},\n\nHere is what changed at {{organisation}} this week:\n\n{{digest}}\n\nOpen the dashboard: {{link}}'],
+
+  ['platform.announcement', 'email', '{{subject}}',
+    'Hello {{name}},\n\n{{message}}\n\n\u2014 The {{appName}} team'],
+  ['platform.payment_reminder', 'email', 'Payment reminder for {{organisation}}',
+    'Hello {{name}},\n\nThis is a reminder that a payment for {{organisation}} is due{{amountLine}}.\n\n{{message}}\n\nOnce the payment is made it will be reflected on your account. If you have already paid, please disregard this reminder.\n\n\u2014 The {{appName}} team'],
+  ['platform.trial_reminder', 'email', 'Your {{appName}} trial ends {{trialEndsAt}}',
+    'Hello {{name}},\n\nThe trial for {{organisation}} ends on {{trialEndsAt}}. To keep working without interruption, choose a plan before then.\n\n{{message}}\n\n\u2014 The {{appName}} team'],
+  ['platform.renewal_reminder', 'email', '{{organisation}} \u2014 subscription renewal',
+    'Hello {{name}},\n\nThe {{planName}} subscription for {{organisation}} renews on {{renewalDate}}.\n\n{{message}}\n\n\u2014 The {{appName}} team'],
+  ['platform.suspension_warning', 'email', 'Action needed to keep {{organisation}} active',
+    'Hello {{name}},\n\nWithout action, access for {{organisation}} will be suspended{{whenLine}}.\n\n{{message}}\n\nPlease settle the outstanding amount or contact support to discuss your account.\n\n\u2014 The {{appName}} team'],
+  ['platform.suspended', 'email', '{{organisation}} has been suspended',
+    'Hello {{name}},\n\nAccess to {{organisation}} on {{appName}} has been suspended.\n\n{{message}}\n\nYour data is intact and nothing has been deleted. Contact Meet Millions support to restore access.\n\n\u2014 The {{appName}} team'],
+  ['platform.reactivated', 'email', '{{organisation}} is active again',
+    'Hello {{name}},\n\nAccess to {{organisation}} on {{appName}} has been restored. Everyone can sign in again.\n\n{{message}}\n\n\u2014 The {{appName}} team'],
 ];
 
 /** In-app notifications are generated from a compact title/body pair. */
@@ -173,6 +198,13 @@ export const IN_APP_DEFAULTS = {
   'payment.failed':             { title: 'Payment failed for {{invoiceNo}}', severity: 'danger', icon: 'alert-triangle' },
   'invoice.issued':             { title: 'Invoice {{invoiceNo}} issued', severity: 'info', icon: 'receipt' },
   'subscription.renewal':       { title: '{{planName}} renews {{renewalDate}}', severity: 'info', icon: 'refresh' },
+  'platform.announcement':       { title: '{{subject}}', severity: 'info', icon: 'megaphone' },
+  'platform.payment_reminder':   { title: 'Payment reminder from {{appName}}', severity: 'warning', icon: 'credit-card' },
+  'platform.trial_reminder':     { title: 'Your trial ends {{trialEndsAt}}', severity: 'warning', icon: 'clock' },
+  'platform.renewal_reminder':   { title: 'Subscription renews {{renewalDate}}', severity: 'info', icon: 'refresh' },
+  'platform.suspension_warning': { title: 'Action needed to avoid suspension', severity: 'danger', icon: 'alert-triangle' },
+  'platform.suspended':          { title: 'This organisation has been suspended', severity: 'danger', icon: 'alert-triangle' },
+  'platform.reactivated':        { title: 'This organisation is active again', severity: 'success', icon: 'check-circle' },
   'subscription.expired':       { title: 'Subscription expired', severity: 'danger', icon: 'alert-triangle' },
   'gst.due_date':               { title: 'GST for {{period}} due {{dueDate}}', severity: 'warning', icon: 'calendar' },
   'reminder.monthly':           { title: 'Upload your {{period}} documents', severity: 'info', icon: 'calendar' },

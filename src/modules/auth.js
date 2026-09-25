@@ -697,6 +697,32 @@ router.post('/logout', async (ctx) => {
   return ok({ signedOut: true }, { ctx });
 }, { allowPending2fa: true, allowPasswordChange: true });
 
+/**
+ * End a platform support-access session deliberately. The administrator's own
+ * platform session was never touched, so the client simply returns to it; this
+ * revokes the support session so it cannot be reused, and closes the audit
+ * bracket that /platform/tenants/:id/impersonate opened.
+ */
+router.post('/support/exit', async (ctx) => {
+  if (!ctx.session?.impersonator_user_id) {
+    throw new BadRequestError('This session is not a support-access session.');
+  }
+  const db = new Db(ctx.env.DB);
+  await revokeSession(db, ctx.session.id, 'support_exit');
+
+  const payload = {
+    action: 'platform.impersonation_ended', category: 'security', severity: 'notice',
+    entityType: 'tenant', entityId: ctx.tenantId, entityLabel: ctx.tenant?.name ?? null,
+    newValue: { endedBy: 'exit', mode: ctx.session.impersonation_mode || 'support' },
+  };
+  // Both trails, like the start of the session: the organisation's own, and
+  // the platform's.
+  await audit(ctx, { ...payload, tenantId: ctx.tenantId });
+  await audit(ctx, { ...payload, tenantId: null });
+
+  return ok({ exited: true }, { ctx });
+});
+
 router.get('/sessions', async (ctx) => {
   const db = new Db(ctx.env.DB);
   const rows = await listUserSessions(db, ctx.userId);
@@ -769,6 +795,14 @@ router.get('/me', async (ctx) => {
 
   return ok({
     user: publicUser(ctx.user, ctx.roles),
+    supportAccess: ctx.supportAccess ? {
+      organisation: ctx.tenant?.name ?? null,
+      organisationId: ctx.tenant?.id ?? null,
+      organisationStatus: ctx.tenant?.status ?? null,
+      mode: ctx.supportAccess.mode,
+      expiresAt: ctx.supportAccess.expiresAt,
+      by: ctx.supportAccess.byLabel,
+    } : null,
     tenant: ctx.tenant ? {
       id: ctx.tenant.id, name: ctx.tenant.name, slug: ctx.tenant.slug,
       status: ctx.tenant.status, gstin: ctx.tenant.gstin, stateCode: ctx.tenant.state_code,

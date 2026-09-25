@@ -31,7 +31,7 @@ import { hashPassword } from '../auth/password.js';
 // page that does not exist through a placeholder nothing supplied. Bumping
 // re-runs the idempotent bootstrap once, which updates platform templates in
 // place and touches nothing else.
-export const BOOTSTRAP_VERSION = '2';
+export const BOOTSTRAP_VERSION = '3';
 
 /**
  * Memo of the databases already known to be seeded.

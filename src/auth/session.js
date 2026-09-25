@@ -29,6 +29,9 @@ function authSecret(env) {
 export async function createSession(env, db, {
   userId, tenantId, ip, userAgent, deviceId = null,
   activeCompanyId = null, twofaSatisfied = false, ttlHours = DEFAULT_SESSION_HOURS,
+  // Support access: who really holds this session, frozen at mint time so
+  // attribution never depends on a later lookup, and which mode bounds it.
+  impersonatorUserId = null, impersonatorLabel = null, impersonationMode = null,
 }) {
   const secret = authSecret(env);
   const sessionId = ID.session();
@@ -49,6 +52,9 @@ export async function createSession(env, db, {
     active_company_id: activeCompanyId,
     twofa_satisfied: twofaSatisfied ? 1 : 0,
     step_up_at: twofaSatisfied ? ts : null,
+    impersonator_user_id: impersonatorUserId,
+    impersonator_label: impersonatorLabel,
+    impersonation_mode: impersonationMode,
     created_at: ts,
     last_seen_at: ts,
     expires_at: addHours(ttlHours),

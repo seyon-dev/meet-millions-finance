@@ -21,6 +21,8 @@ import { assertFeature } from '../services/features.js';
 import { isIpAllowed, getSecurityPolicy } from '../services/security.js';
 import { addMinutes, isPast } from '../utils/time.js';
 
+const VIEW_MODE_EXEMPT = new Set(['/api/auth/logout', '/api/auth/support/exit']);
+
 function bearerToken(request) {
   const header = request.headers.get('authorization') || '';
   if (header.toLowerCase().startsWith('bearer ')) return header.slice(7).trim();
@@ -61,7 +63,10 @@ export async function authenticate(ctx) {
   });
   if (!session) return;
 
-  const identity = await loadIdentity(db, session.user_id);
+  // A platform support-access session may enter a suspended organisation —
+  // that is often exactly why it exists. Everyone else stays blocked.
+  const supportSession = !!session.impersonator_user_id;
+  const identity = await loadIdentity(db, session.user_id, { allowSuspendedTenant: supportSession });
 
   // The organisation's own idle cut-off (Settings -> Security). The env var,
   // enforced inside resolveSession above, is a deployment-wide setting;
@@ -73,6 +78,15 @@ export async function authenticate(ctx) {
     return;
   }
   ctx.securityPolicy = policy;
+
+  if (supportSession) {
+    ctx.supportAccess = {
+      by: session.impersonator_user_id,
+      byLabel: session.impersonator_label,
+      mode: session.impersonation_mode || 'support',
+      expiresAt: session.expires_at,
+    };
+  }
 
   ctx.session = session;
   ctx.user = identity.user;
@@ -99,8 +113,20 @@ export async function authorize(ctx, route) {
     throw new AuthRequiredError('Sign in to continue.');
   }
 
+  // A view-only support session reads; it never writes. The only mutations
+  // it may perform are the ones that end it.
+  if (ctx.supportAccess?.mode === 'view'
+      && !['GET', 'HEAD', 'OPTIONS'].includes(ctx.request.method)
+      && !VIEW_MODE_EXEMPT.has(ctx.pathname)) {
+    throw new ForbiddenError(
+      'This is a view-only support session. Open a support-mode session to make changes.',
+      { reason: 'support_view_only' });
+  }
+
   // Password-change lockout: nothing but the change-password call is allowed.
-  if (ctx.user?.must_change_password && !opts.allowPasswordChange) {
+  // A support session acts as the person without holding their password, so
+  // the lockout cannot apply to it.
+  if (ctx.user?.must_change_password && !opts.allowPasswordChange && !ctx.supportAccess) {
     throw new ForbiddenError('You must set a new password before continuing.');
   }
 

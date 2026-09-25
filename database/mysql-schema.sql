@@ -5,7 +5,7 @@
 -- Do not edit by hand: add a migration and regenerate, or the two will drift
 -- and the MySQL deployment will quietly differ from what the tests prove.
 --
--- 116 tables. Import into an EMPTY database:
+-- 117 tables. Import into an EMPTY database:
 --
 --     mysql -h <host> -u <user> -p <database> < database/mysql-schema.sql
 --
@@ -27,6 +27,7 @@
 -- COVERS: 0010_oauth_state_hash.sql
 -- COVERS: 0011_chatbot_thread_state.sql
 -- COVERS: 0012_automation_runs_and_queues.sql
+-- COVERS: 0015_platform_support_access.sql
 -- ---------------------------------------------------------------------------
 
 SET FOREIGN_KEY_CHECKS = 0;
@@ -276,7 +277,11 @@ CREATE TABLE sessions (
   expires_at VARCHAR(255) NOT NULL,
   revoked_at VARCHAR(255),
   revoked_reason TEXT,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  impersonator_user_id VARCHAR(64),
+  impersonator_label TEXT,
+  impersonation_mode TEXT CHECK (impersonation_mode IN ('view','support') OR impersonation_mode IS NULL),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (impersonator_user_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -------------------------------------------------------------------------
@@ -1028,6 +1033,7 @@ CREATE TABLE subscriptions (
   gateway_subscription_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
+  grace_until TEXT,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
   FOREIGN KEY (plan_id) REFERENCES plans(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -2668,6 +2674,24 @@ CREATE TABLE broadcasts (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -------------------------------------------------------------------------
+CREATE TABLE subscription_events (
+  id VARCHAR(64) PRIMARY KEY,
+  tenant_id VARCHAR(64) NOT NULL,
+  subscription_id VARCHAR(64),
+  kind TEXT NOT NULL
+                    CHECK (kind IN ('plan_changed','period_extended','trial_extended','status_changed',
+                                    'payment_recorded','reminder_sent','renewed','suspended','reactivated','note')),
+  actor_id TEXT,
+  actor_name TEXT,
+  old_value_json TEXT,
+  new_value_json TEXT,
+  note TEXT,
+  created_at VARCHAR(255) NOT NULL,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  FOREIGN KEY (subscription_id) REFERENCES subscriptions(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -------------------------------------------------------------------------
 CREATE TABLE chat_threads (
   id VARCHAR(64) PRIMARY KEY,
   tenant_id VARCHAR(64) NOT NULL,
@@ -2927,5 +2951,6 @@ CREATE INDEX idx_bcastrcpt_broadcast ON broadcast_recipients (broadcast_id, stat
 CREATE INDEX idx_bcastrcpt_tenant ON broadcast_recipients (tenant_id);
 CREATE UNIQUE INDEX idx_bcastrcpt_unique ON broadcast_recipients (broadcast_id, to_address);
 CREATE INDEX idx_broadcasts_tenant ON broadcasts (tenant_id, status, created_at);
+CREATE INDEX idx_subevents_tenant ON subscription_events (tenant_id, created_at);
 
 SET FOREIGN_KEY_CHECKS = 1;

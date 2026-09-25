@@ -1,6 +1,6 @@
 # API reference
 
-327 routes across 34 routers. This file is generated from the
+331 routes across 34 routers. This file is generated from the
 routers themselves — `node scripts/gen-api-docs.mjs > docs/api.md` — so it
 cannot drift from the code.
 
@@ -78,6 +78,7 @@ signature instead.
 | POST | `/api/auth/reset-password` | public |
 | POST | `/api/auth/change-password` | signed in |
 | POST | `/api/auth/logout` | signed in |
+| POST | `/api/auth/support/exit` | signed in |
 | GET | `/api/auth/sessions` | signed in |
 | DELETE | `/api/auth/sessions/:id` | signed in |
 | POST | `/api/auth/sessions/revoke-others` | signed in |
@@ -393,6 +394,9 @@ signature instead.
 | POST | `/api/platform/tenants` | `tenants.create` |
 | PATCH | `/api/platform/tenants/:id` | `tenants.update` or `tenants.suspend` |
 | POST | `/api/platform/tenants/:id/plan` | `tenants.update` |
+| PATCH | `/api/platform/tenants/:id/subscription` | `tenants.update` |
+| POST | `/api/platform/tenants/:id/payments` | `tenants.update` |
+| POST | `/api/platform/tenants/:id/notify` | `tenants.update` |
 | POST | `/api/platform/tenants/:id/impersonate` | `users.impersonate` |
 | GET | `/api/platform/franchises` | `franchises.view` |
 | POST | `/api/platform/franchises` | `franchises.manage` |

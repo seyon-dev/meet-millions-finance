@@ -13,13 +13,14 @@
 
 import { Db } from '../db/client.js';
 import { platformScope } from '../db/tenancy.js';
-import { nowIso, addDays, monthKey, dayKey, daysBetween, recentMonthKeys } from '../utils/time.js';
+import { nowIso, addDays, addMonths, monthKey, dayKey, daysBetween, recentMonthKeys } from '../utils/time.js';
 import { logSystemEvent } from './logging.js';
 import { purgeExpiredAuditLogs, anchorChain } from './audit.js';
 import { runDueAutomationJobs } from './automation.js';
 import { runDueBroadcasts } from './broadcasts.js';
 import { purgeExpiredSessions } from '../auth/session.js';
 import { purgeRateLimits } from './ratelimit.js';
+import { recordSubscriptionEvent } from './subscription-events.js';
 import { purgeSystemLogs } from './logging.js';
 
 export async function runScheduled(event, env) {
@@ -348,10 +349,102 @@ async function flagSubscriptionRenewals(env) {
     [nowIso()]);
   for (const sub of lapsed) {
     await db.update('subscriptions', { id: sub.id }, { status: 'expired', updated_at: nowIso() });
+    await recordSubscriptionEvent(db, {
+      tenantId: sub.tenant_id, subscriptionId: sub.id, kind: 'status_changed',
+      actorName: 'scheduler', newValue: { status: 'expired', reason: 'period_ended_no_renewal' },
+    });
     expired++;
   }
 
-  return { notified, expired };
+  // A trial that reaches its end does not vanish: it moves to past_due with a
+  // seven-day grace window, and the administrators are told. Payment is
+  // recorded manually by the platform, so this is a dunning state, not a
+  // charge attempt.
+  let dunned = 0, renewed = 0;
+  const endedTrials = await db.many(
+    `SELECT s.id, s.tenant_id, s.trial_ends_at, t.name AS tenant_name
+       FROM subscriptions s JOIN tenants t ON t.id = s.tenant_id
+      WHERE s.status = 'trialing' AND s.trial_ends_at IS NOT NULL AND s.trial_ends_at < ? LIMIT 200`,
+    [nowIso()]);
+  for (const sub of endedTrials) {
+    const grace = addDays(7);
+    await db.update('subscriptions', { id: sub.id },
+      { status: 'past_due', grace_until: grace, updated_at: nowIso() });
+    await recordSubscriptionEvent(db, {
+      tenantId: sub.tenant_id, subscriptionId: sub.id, kind: 'status_changed',
+      actorName: 'scheduler',
+      oldValue: { status: 'trialing' },
+      newValue: { status: 'past_due', graceUntil: grace, reason: 'trial_ended' },
+    });
+    await notifyOrgAdmins(env, db, sub.tenant_id, 'platform.trial_reminder', {
+      organisation: sub.tenant_name,
+      trialEndsAt: String(sub.trial_ends_at).slice(0, 10),
+      message: 'Your trial has ended. Choose a plan within the next 7 days to keep working without interruption.',
+    });
+    dunned++;
+  }
+
+  // past_due beyond its grace window becomes expired — the state entitlement
+  // checks treat as no subscription at all.
+  const beyondGrace = await db.many(
+    `SELECT s.id, s.tenant_id, t.name AS tenant_name
+       FROM subscriptions s JOIN tenants t ON t.id = s.tenant_id
+      WHERE s.status = 'past_due' AND s.grace_until IS NOT NULL AND s.grace_until < ? LIMIT 200`,
+    [nowIso()]);
+  for (const sub of beyondGrace) {
+    await db.update('subscriptions', { id: sub.id }, { status: 'expired', updated_at: nowIso() });
+    await recordSubscriptionEvent(db, {
+      tenantId: sub.tenant_id, subscriptionId: sub.id, kind: 'status_changed',
+      actorName: 'scheduler',
+      oldValue: { status: 'past_due' },
+      newValue: { status: 'expired', reason: 'grace_period_ended' },
+    });
+    await notifyOrgAdmins(env, db, sub.tenant_id, 'subscription.expired', {
+      organisation: sub.tenant_name,
+    });
+    expired++;
+  }
+
+  // An auto-renewing subscription rolls into its next period. No charge is
+  // attempted — the platform records payments manually — the period simply
+  // advances so entitlements and renewal reminders stay truthful.
+  const renewing = await db.many(
+    `SELECT id, tenant_id, current_period_end FROM subscriptions
+      WHERE status = 'active' AND auto_renew = 1 AND current_period_end < ? LIMIT 200`,
+    [nowIso()]);
+  for (const sub of renewing) {
+    const start = sub.current_period_end;
+    const end = addMonths(1, new Date(sub.current_period_end));
+    await db.update('subscriptions', { id: sub.id }, {
+      current_period_start: start, current_period_end: end, updated_at: nowIso(),
+    });
+    await recordSubscriptionEvent(db, {
+      tenantId: sub.tenant_id, subscriptionId: sub.id, kind: 'renewed',
+      actorName: 'scheduler',
+      oldValue: { currentPeriodEnd: start }, newValue: { currentPeriodEnd: end },
+    });
+    renewed++;
+  }
+
+  return { notified, expired, dunned, renewed };
+}
+
+/** Platform lifecycle notices go to the organisation's administrators. */
+async function notifyOrgAdmins(env, db, tenantId, triggerKey, variables) {
+  const { dispatchNotification } = await import('./notifications.js');
+  const admins = await db.many(
+    `SELECT u.id FROM users u
+       JOIN user_roles ur ON ur.user_id = u.id
+       JOIN roles r ON r.id = ur.role_id
+      WHERE u.tenant_id = ? AND r.key = 'admin' AND u.status = 'active' AND u.deleted_at IS NULL`,
+    [tenantId]);
+  if (!admins.length) return 0;
+  const ctx = syntheticCtx(env, tenantId);
+  await dispatchNotification(ctx, {
+    triggerKey, tenantId, userIds: admins.map(a => a.id), variables,
+    link: { path: '/billing/subscription' },
+  });
+  return admins.length;
 }
 
 /** Retention: audit logs, sessions, rate limits, system logs, recordings. */
@@ -524,4 +617,4 @@ export function syntheticCtx(env, tenantId = null) {
   };
 }
 
-export { platformScope, recentMonthKeys };
+export { platformScope, recentMonthKeys, flagSubscriptionRenewals };

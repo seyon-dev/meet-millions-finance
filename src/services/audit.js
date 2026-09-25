@@ -163,6 +163,27 @@ export async function audit(ctx, {
     created_at: created,
   };
 
+  // Support access: the person acting is the platform administrator, and the
+  // trail must say so — never the account they are acting as. The label was
+  // frozen on the session when it was opened.
+  if (ctx.session?.impersonator_user_id) {
+    entry.actor_id = ctx.session.impersonator_user_id;
+    entry.actor_name = ctx.session.impersonator_label || 'Platform administrator';
+    entry.actor_role = 'super_admin';
+    // actor_type stays 'user' — the CHECK constraint on deployed databases
+    // allows nothing else, and it is true: the actor is the platform
+    // administrator. metadata.supportAccess is the discriminator.
+    entry.metadata_json = JSON.stringify({
+      ...(metadata ?? {}),
+      supportAccess: {
+        mode: ctx.session.impersonation_mode || 'support',
+        actingAs: ctx.user
+          ? { id: ctx.user.id, name: ctx.user.full_name, email: ctx.user.email }
+          : null,
+      },
+    });
+  }
+
   entry.hash = await sha256Hex(`${prevHash ?? ''}::${canonical(entry)}`);
   await db.insert('audit_logs', entry);
   return entry;

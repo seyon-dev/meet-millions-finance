@@ -70,6 +70,7 @@ export const ID = {
   approval: () => newId('apr'),
   task: () => newId('tsk'),
   automationJob: () => newId('ajb'),
+  subscriptionEvent: () => newId('sev'),
   automationRun: () => newId('arn'),
   broadcastRecipient: () => newId('bcr'),
   activity: () => newId('act'),

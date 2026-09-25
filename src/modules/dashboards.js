@@ -519,11 +519,46 @@ async function platformDashboard(ctx) {
   const counts = await db.one(
     `SELECT
        (SELECT COUNT(*) FROM tenants WHERE status = 'active') AS active_tenants,
+       (SELECT COUNT(*) FROM tenants WHERE status = 'trial') AS trial_tenants,
+       (SELECT COUNT(*) FROM tenants WHERE status = 'suspended') AS suspended_tenants,
+       (SELECT COUNT(*) FROM tenants WHERE status = 'cancelled') AS cancelled_tenants,
        (SELECT COUNT(*) FROM tenants) AS total_tenants,
        (SELECT COUNT(*) FROM users WHERE deleted_at IS NULL AND status = 'active') AS users,
        (SELECT COUNT(*) FROM companies WHERE deleted_at IS NULL) AS companies,
        (SELECT COUNT(*) FROM documents WHERE deleted_at IS NULL) AS documents,
        (SELECT COUNT(*) FROM franchises WHERE status = 'active') AS franchises`);
+
+  // The organisations that need somebody's attention, and the money that is
+  // late or about to be due — the reason a platform owner opens this screen.
+  const outstanding = await db.one(
+    `SELECT COALESCE(SUM(amount_due_paise),0) AS due, COUNT(*) AS invoices
+       FROM invoices WHERE direction = 'platform_to_tenant'
+        AND status IN ('issued','sent','partially_paid','overdue')`);
+
+  const attention = await db.many(
+    `SELECT t.id, t.name, t.status AS tenant_status, s.status AS subscription_status,
+            s.current_period_end, s.trial_ends_at, s.grace_until, p.name AS plan_name
+       FROM tenants t
+       JOIN subscriptions s ON s.id =
+         (SELECT s2.id FROM subscriptions s2 WHERE s2.tenant_id = t.id ORDER BY s2.created_at DESC LIMIT 1)
+       LEFT JOIN plans p ON p.id = s.plan_id
+      WHERE t.deleted_at IS NULL
+        AND (s.status IN ('past_due','expired','paused')
+             OR t.status IN ('suspended')
+             OR (s.status = 'trialing' AND s.trial_ends_at <= ?)
+             OR (s.status = 'active' AND s.current_period_end <= ?))
+      ORDER BY s.current_period_end LIMIT 12`,
+    [addDays(7), addDays(14)]);
+
+  const subscriptionStates = await db.many(
+    `SELECT s.status, COUNT(*) AS n FROM subscriptions s
+       JOIN (SELECT tenant_id, MAX(created_at) AS mc FROM subscriptions GROUP BY tenant_id) latest
+         ON latest.tenant_id = s.tenant_id AND latest.mc = s.created_at
+      GROUP BY s.status`);
+
+  const recentActivity = await db.many(
+    `SELECT action, actor_name, entity_label, severity, created_at
+       FROM audit_logs WHERE tenant_id IS NULL ORDER BY sequence DESC LIMIT 8`);
 
   const mrr = await db.one(
     `SELECT COALESCE(SUM(p.monthly_price_paise),0) AS plan_mrr
@@ -573,6 +608,21 @@ async function platformDashboard(ctx) {
     topAddOns: topAddOns.map(a => ({ key: a.key, name: a.name, subscriptions: Number(a.subscriptions) })),
     recentTenants,
     mrr: { planPaise: planMrr, addOnPaise: addonMrr, totalPaise: planMrr + addonMrr },
+    tenantsByStatus: {
+      active: Number(counts?.active_tenants) || 0,
+      trial: Number(counts?.trial_tenants) || 0,
+      suspended: Number(counts?.suspended_tenants) || 0,
+      cancelled: Number(counts?.cancelled_tenants) || 0,
+      total: Number(counts?.total_tenants) || 0,
+    },
+    subscriptionsByStatus: Object.fromEntries(subscriptionStates.map(r => [r.status, Number(r.n)])),
+    outstanding: { paise: Number(outstanding?.due) || 0, invoices: Number(outstanding?.invoices) || 0 },
+    needsAttention: attention.map(t => ({
+      id: t.id, name: t.name, tenantStatus: t.tenant_status,
+      subscriptionStatus: t.subscription_status, planName: t.plan_name,
+      currentPeriodEnd: t.current_period_end, trialEndsAt: t.trial_ends_at, graceUntil: t.grace_until,
+    })),
+    recentActivity,
   };
 }
 

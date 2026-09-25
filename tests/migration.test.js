@@ -300,11 +300,11 @@ describe('Migration planning', () => {
 
   test('the real baseline parses into the structure adoption checks against', () => {
     const expected = parseExpectedSchema(readFileSync('database/mysql-schema.sql', 'utf8'));
-    assert.equal(expected.size, 116, 'every table in the baseline');
+    assert.equal(expected.size, 117, 'every table in the baseline');
 
     const indexes = [...expected.values()].reduce((n, t) => n + t.indexes.size, 0);
     const columns = [...expected.values()].reduce((n, t) => n + t.columns.size, 0);
-    assert.equal(indexes, 167);
+    assert.equal(indexes, 168);
     assert.ok(columns > 1500, `expected the full column set, got ${columns}`);
 
     // Spot-check a table whose shape this session changed, so the parser is
@@ -319,13 +319,13 @@ describe('Migration planning', () => {
     // The failure the "116 tables, therefore fine" shortcut would wave through.
     const expected = parseExpectedSchema(readFileSync('database/mysql-schema.sql', 'utf8'));
     const impostor = new Map();
-    for (let i = 0; i < 116; i += 1) {
+    for (let i = 0; i < 117; i += 1) {
       impostor.set(`unrelated_table_${i}`, { columns: new Set(['id']), indexes: new Set() });
     }
     const verification = compareSchema(expected, impostor);
     assert.equal(verification.matches, false);
-    assert.equal(verification.missingTables.length, 116);
-    assert.equal(plan({ tableCount: 116, verification }).action, 'refuse');
+    assert.equal(verification.missingTables.length, 117);
+    assert.equal(plan({ tableCount: 117, verification }).action, 'refuse');
   });
 
   test('extra tables are reported but do not block adoption', () => {

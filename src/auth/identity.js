@@ -9,7 +9,7 @@ import { permissionsForRoles } from '../permissions/roles.js';
 import { AuthRequiredError, ForbiddenError } from '../http/errors.js';
 import { nowIso } from '../utils/time.js';
 
-export async function loadIdentity(db, userId) {
+export async function loadIdentity(db, userId, { allowSuspendedTenant = false } = {}) {
   const user = await db.one(
     `SELECT id, tenant_id, email, full_name, phone, avatar_key, job_title, branch_id, status,
             twofa_enabled, twofa_enrolled_at, must_change_password, last_login_at, locale,
@@ -58,8 +58,18 @@ export async function loadIdentity(db, userId) {
     : null;
 
   if (user.tenant_id && !tenant) throw new ForbiddenError('Your organisation is no longer active.');
-  if (tenant && tenant.status === 'suspended') {
-    throw new ForbiddenError('Your organisation’s account is suspended. Contact support to restore access.');
+  // A suspended or closed organisation is blocked for its own people — but a
+  // platform support-access session must still get in to investigate and fix
+  // the very problem that led here, so the caller may lift the block.
+  if (tenant && tenant.status === 'suspended' && !allowSuspendedTenant) {
+    throw new ForbiddenError(
+      'Your organisation account is currently suspended. Please contact Meet Millions support.',
+      { reason: 'organisation_suspended' });
+  }
+  if (tenant && tenant.status === 'cancelled' && !allowSuspendedTenant) {
+    throw new ForbiddenError(
+      'Your organisation account has been closed. Please contact Meet Millions support.',
+      { reason: 'organisation_cancelled' });
   }
 
   const memberships = await db.many(
