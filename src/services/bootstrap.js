@@ -417,7 +417,15 @@ async function seedTaxRules(db, ts) {
 /** Resolve a system role id by key — used by provisioning and user invites. */
 export async function systemRoleId(db, key) {
   const row = await db.one('SELECT id FROM roles WHERE key = ? AND tenant_id IS NULL', [key]);
-  return row?.id ?? null;
+  if (!row) {
+    // Returning null here used to surface later as a cryptic NOT NULL
+    // violation on user_roles.role_id. The real problem is always the same:
+    // the platform catalogue has not been seeded on this database yet.
+    throw new Error(
+      `The system role '${key}' does not exist yet — the platform bootstrap has not run on this database. ` +
+      'Start the server once (it bootstraps automatically) or call ensureBootstrapped() first.');
+  }
+  return row.id;
 }
 
 export async function planIdByKey(db, key) {

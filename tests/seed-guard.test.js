@@ -20,6 +20,14 @@ test('refuses production seeding with the published password', () => {
   assert.match(d.message, /DEMO_PASSWORD/);
 });
 
+test('an explicit SEED_DEMO=false disables the manual command too', () => {
+  const d = decideSeed({ argv: [], env: { SEED_DEMO: 'false', DEMO_PASSWORD: 'set' } });
+  assert.equal(d.allowed, false);
+  assert.equal(d.reason, 'seed_demo_disabled');
+  // --check stays read-only and is still allowed to report.
+  assert.equal(decideSeed({ argv: ['--check'], env: { SEED_DEMO: 'false' } }).allowed, true);
+});
+
 test('allows production seeding once DEMO_PASSWORD is set', () => {
   const d = decideSeed({ argv: [], env: { NODE_ENV: 'production', DEMO_PASSWORD: 'set-by-the-operator' } });
   assert.equal(d.allowed, true);

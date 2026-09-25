@@ -14,6 +14,7 @@
 import { Db } from '../src/db/client.js';
 import { TenantScope } from '../src/db/tenancy.js';
 import { provisionTenant, provisionClient, openFilingPeriod } from '../src/services/provisioning.js';
+import { ensureBootstrapped } from '../src/services/bootstrap.js';
 import { hashPassword } from '../src/auth/password.js';
 import { ID } from '../src/utils/id.js';
 import { nowIso, dayKey, monthKey, addDays, addHours } from '../src/utils/time.js';
@@ -92,8 +93,30 @@ export async function seedDemoData(env) {
   const db = new Db(env.DB);
   const ctx = { env, tenantId: null, userId: null, user: null };
 
+  // A freshly migrated database has tables but no platform catalogue (roles,
+  // plans, permissions) — that is seeded by the bootstrap, which the server
+  // runs at boot. The CLI must not depend on the server having started once:
+  // run it here. It is idempotent and returns immediately once its version
+  // marker is written.
+  await ensureBootstrapped(env);
+
   const existing = await db.one("SELECT id FROM tenants WHERE slug LIKE 'meridian%' LIMIT 1");
-  if (existing) return { email: 'asha@meridiantax.example', password: PASSWORD, reused: true };
+  if (existing) {
+    // "Already seeded" must mean COMPLETE, not merely started: a crash mid
+    // seed leaves the tenant row without its owner, and calling that state
+    // reused would hide the failure forever.
+    const owner = await db.one(
+      `SELECT u.id FROM users u JOIN user_roles ur ON ur.user_id = u.id
+        WHERE u.tenant_id = ? AND u.email = ? LIMIT 1`,
+      [existing.id, 'asha@meridiantax.example']);
+    if (!owner) {
+      throw new Error(
+        'A previous demonstration seed did not finish: the organisation exists but its owner account does not. ' +
+        'Fix the original cause, remove the partial organisation (the tenant whose slug starts with "meridian" ' +
+        'and its rows), and seed again.');
+    }
+    return { email: 'asha@meridiantax.example', password: PASSWORD, reused: true };
+  }
 
   // ---- The practice --------------------------------------------------------
   const { tenant, company, user, scope } = await provisionTenant(ctx, {

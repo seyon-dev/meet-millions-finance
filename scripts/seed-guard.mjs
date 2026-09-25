@@ -32,6 +32,16 @@ export function decideSeed({ argv = [], env = {} } = {}) {
 
   const base = { dryRun, accepted, isProduction, passwordIsPublished };
 
+  // An explicit SEED_DEMO=false is the operator saying this deployment must
+  // carry no demonstration data. The manual command respects that as much as
+  // the server's startup path does — unset it (or set it true) to seed.
+  if (String(env.SEED_DEMO ?? '') === 'false' && !dryRun) {
+    return {
+      ...base, allowed: false, reason: 'seed_demo_disabled',
+      message: 'SEED_DEMO=false is set for this deployment, so demonstration data is disabled. Unset it or set SEED_DEMO=true to seed.',
+    };
+  }
+
   // --check is read-only, so the guard has nothing to protect: it reports the
   // target and writes nothing, whatever NODE_ENV says.
   if (isProduction && passwordIsPublished && !accepted && !dryRun) {
